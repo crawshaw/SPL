@@ -4,6 +4,8 @@
 
 namespace SPL {
   namespace AST {
+    enum Purity { Pure, Impure, Sealed, FunIO };
+
     class Expr {
     };
 
@@ -62,10 +64,12 @@ namespace SPL {
       std::string Name;
       std::vector<std::string> Args;
       Expr* Body;
+      Purity Pureness;
 
     public:
       Function(const std::string &name, const std::vector<std::string> &args,
-        Expr &body) : Name(name), Args(args), Body(&body) {}
+        Expr &body, Purity purity):
+        Name(name), Args(args), Body(&body), Pureness(purity) {}
     };
 
     class File {

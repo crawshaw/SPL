@@ -22,7 +22,11 @@ static std::vector<std::string> args;
 %type <value> NUMBER
 %type <ident> IDENT
 
-%token DEF "def"
+%token DEF
+%token IO
+%token IMP
+%token VAR
+%token VAL
 %token '('
 %token ')'
 %token ','
@@ -40,7 +44,17 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | DEF IDENT '(' args ')' '=' exp {
       std::vector<std::string> arguments = args;
       args.clear();
-      $$ = new AST::Function(*$2, arguments, *$7);
+      $$ = new AST::Function(*$2, arguments, *$7, AST::Pure);
+    }
+    | IO IDENT '(' args ')' '=' exp {
+      std::vector<std::string> arguments = args;
+      args.clear();
+      $$ = new AST::Function(*$2, arguments, *$7, AST::FunIO);
+    }
+    | IMP IDENT '(' args ')' '=' exp {
+      std::vector<std::string> arguments = args;
+      args.clear();
+      $$ = new AST::Function(*$2, arguments, *$7, AST::Impure);
     }
 
 args :
@@ -76,15 +90,12 @@ int yylex() {
       StrVal += std::cin.get();
 
     if (StrVal == "def") return DEF;
-    /*
-    if (StrVal == "io")  return tok_io;
-    if (StrVal == "imp") return tok_imp;
-    if (StrVal == "var") return tok_var;
-    if (StrVal == "val") return tok_val;
-    */
+    if (StrVal == "io")  return IO;
+    if (StrVal == "imp") return IMP;
+    if (StrVal == "var") return VAR;
+    if (StrVal == "val") return VAL;
 
-    std::string *ident = new std::string(StrVal);
-    yylval.ident = ident;
+    yylval.ident = new std::string(StrVal);
     return IDENT;
   }
 
