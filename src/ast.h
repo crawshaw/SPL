@@ -46,10 +46,27 @@ namespace SPL {
     public:
       Multiply(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
     };
+    class Eq : public BinaryOp { // TODO replace builtin == with Eq typeclass
+      public: Eq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+    };
 
     class Seq : public BinaryOp {
     public:
       Seq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+    };
+
+    class Val : public Expr {
+      std::string Name;
+      Expr* Value;
+    public:
+      Val(const std::string &name, Expr& value): Name(name), Value(&value) {}
+    };
+
+    class If : public Expr {
+      Expr *Cond, *Then, *Else;
+    public:
+      If(Expr& cond, Expr& then, Expr& el)
+        : Cond(&cond), Then(&then), Else(&el) {}
     };
 
     class Call : public Expr {

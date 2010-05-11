@@ -27,6 +27,11 @@ static std::vector<std::string> args;
 %token IMP
 %token VAR
 %token VAL
+%token IF
+%token THEN
+%token ELSE
+%token EQ "=="
+%token '='
 %token '('
 %token ')'
 %token ','
@@ -38,9 +43,12 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | exp '-' exp { $$ = new AST::Subtract(*$1, *$3); }
     | exp '*' exp { $$ = new AST::Multiply(*$1, *$3); }
     | exp ';' exp { $$ = new AST::Seq(*$1, *$3); }
+    | exp EQ  exp { $$ = new AST::Eq(*$1, *$3); }
     | '{' exp '}' { $$ = $2; }
     | IDENT       { $$ = new AST::Variable(*$1); }
     | NUMBER      { $$ = new AST::Number($1); }
+    | IF exp THEN exp ELSE exp  { $$ = new AST::If(*$2, *$4, *$6); }
+    | VAL IDENT '=' exp         { $$ = new AST::Val(*$2, *$4); }
     | DEF IDENT '(' args ')' '=' exp {
       std::vector<std::string> arguments = args;
       args.clear();
@@ -77,27 +85,33 @@ void yyerror(const char *error)
   );
 }
 
+bool isaspecial(int ch) {
+  switch (ch) {
+    case ')':
+    case '(':
+    case '{':
+    case '}':
+    case ',':
+    case ':':
+    case ';':
+    case '"':
+    case '`':
+    case '[':
+    case ']':
+    case '+': // TODO: remove these special cases, treat as identifiers
+    case '-':
+    case '*':
+      return true;
+    default:
+      return false;
+  }
+}
+
 int yylex() {
-  char LastChar = std::cin.get();
+  int LastChar = std::cin.get();
 
   while (isspace(LastChar))
     LastChar = std::cin.get();
-
-  if (isalpha(LastChar)) {
-    std::string StrVal = "";
-    StrVal += LastChar;
-    while (isalnum((std::cin.peek())))
-      StrVal += std::cin.get();
-
-    if (StrVal == "def") return DEF;
-    if (StrVal == "io")  return IO;
-    if (StrVal == "imp") return IMP;
-    if (StrVal == "var") return VAR;
-    if (StrVal == "val") return VAL;
-
-    yylval.ident = new std::string(StrVal);
-    return IDENT;
-  }
 
   if (isdigit(LastChar)) {
     std::string num;
@@ -114,5 +128,26 @@ int yylex() {
   if (LastChar == EOF)
     return -1;
 
-  return LastChar;
+  if (isaspecial(LastChar))
+    return LastChar;
+
+  // Collect until whitespace.
+  std::string StrVal = "";
+  StrVal += LastChar;
+  while (!isspace(std::cin.peek()) && !isaspecial(std::cin.peek()))
+    StrVal += std::cin.get();
+
+  if (StrVal == "def") return DEF;
+  if (StrVal == "io")  return IO;
+  if (StrVal == "imp") return IMP;
+  if (StrVal == "var") return VAR;
+  if (StrVal == "val") return VAL;
+  if (StrVal == "if")   return IF;
+  if (StrVal == "then") return THEN;
+  if (StrVal == "else") return ELSE;
+  if (StrVal == "==") return EQ;
+  if (StrVal == "=") return '=';
+
+  yylval.ident = new std::string(StrVal);
+  return IDENT;
 }
