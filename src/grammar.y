@@ -5,8 +5,11 @@ using namespace SPL;
 
 void yyerror(const char *error);
 int yylex();
+
+static std::vector<std::string> args;
 %}
 
+%locations
 %token IDENT NUMBER
 
 %union {
@@ -19,6 +22,10 @@ int yylex();
 %type <value> NUMBER
 %type <ident> IDENT
 
+%token DEF "def"
+%token '('
+%token ')'
+%token ','
 %left '+'
 %left '*'
 %%
@@ -28,12 +35,17 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | exp '*' exp { $$ = new AST::Multiply(*$1, *$3); }
     | IDENT       { $$ = new AST::Variable(*$1); }
     | NUMBER      { $$ = new AST::Number($1); }
-    | "foo" { $$ = new AST::Number(4); }
-    | "def" IDENT '(' IDENT ',' IDENT ')' {
-      std::vector<std::string> args;
+    | DEF IDENT '(' args ')' {
+      std::vector<std::string> arguments = args;
+      args.clear();
+      std::cout << "arguments size=" << arguments.size() << std::endl;
       std::vector<AST::Expr*> body;
-      $$ = new AST::Function(*$2, args, body);
+      $$ = new AST::Function(*$2, arguments, body);
     }
+
+args :
+     | IDENT { args.push_back(*$1); }
+     | args ',' IDENT { args.push_back(*$3); }
 
 %%
 
@@ -44,7 +56,11 @@ int main()
 
 void yyerror(const char *error)
 {
-  std::cout << error << std::endl;
+  fprintf(stderr, "%d.%d-%d.%d: error: %s\n",
+    yylloc.first_line, yylloc.first_column,
+    yylloc.last_line, yylloc.last_column,
+    error
+  );
 }
 
 int yylex() {
@@ -56,11 +72,11 @@ int yylex() {
   if (isalpha(LastChar)) {
     std::string StrVal = "";
     StrVal += LastChar;
-    while (isalnum((LastChar = std::cin.get())))
-      StrVal += LastChar;
+    while (isalnum((std::cin.peek())))
+      StrVal += std::cin.get();
 
+    if (StrVal == "def") return DEF;
     /*
-    if (StrVal == "def") return tok_def;
     if (StrVal == "io")  return tok_io;
     if (StrVal == "imp") return tok_imp;
     if (StrVal == "var") return tok_var;
@@ -74,10 +90,10 @@ int yylex() {
 
   if (isdigit(LastChar)) {
     std::string num;
-    do {
-      num += LastChar;
-      LastChar = std::cin.get();
-    } while (isdigit(LastChar));
+    num += LastChar;
+    while (isdigit(std::cin.peek()))
+      num += std::cin.get();
+
     int NumVal;
     SPL::Util::from_string<int>(NumVal, num, std::dec);
     yylval.value = NumVal;
@@ -87,7 +103,5 @@ int yylex() {
   if (LastChar == EOF)
     return -1;
 
-  int ThisChar = LastChar;
-  LastChar = std::cin.get();
-  return ThisChar;
+  return LastChar;
 }
