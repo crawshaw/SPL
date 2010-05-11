@@ -1,12 +1,22 @@
+#include "llvm/DerivedTypes.h"
+#include "llvm/LLVMContext.h"
+#include "llvm/Module.h"
+#include "llvm/PassManager.h"
+#include "llvm/Analysis/Verifier.h"
+//include "llvm/Support/IRBuilder.h"
+
 #include <string>
 #include <vector>
 #include <sstream>
+
 
 namespace SPL {
   namespace AST {
     enum Purity { Pure, Impure, Sealed, FunIO };
 
     class Expr {
+    public:
+      virtual llvm::Value *Codegen() = 0;
     };
 
     // TODO: more general literal
@@ -14,12 +24,14 @@ namespace SPL {
       int Val;
     public:
       Number(int val): Val(val) {}
+      virtual llvm::Value *Codegen();
     };
 
     class Variable : public Expr {
       std::string Name;
     public:
       Variable(const std::string &name): Name(name) {}
+      virtual llvm::Value *Codegen();
     };
 
     class UnaryOp : public Expr {};
@@ -27,6 +39,7 @@ namespace SPL {
       Expr *SubExpr;
     public:
       Not(Expr &expr): SubExpr(&expr) {};
+      virtual llvm::Value *Codegen();
     };
 
     class BinaryOp : public Expr {
@@ -37,29 +50,36 @@ namespace SPL {
     class Add : public BinaryOp {
     public:
       Add(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+      virtual llvm::Value *Codegen();
     };
     class Subtract : public BinaryOp {
     public:
       Subtract(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+      virtual llvm::Value *Codegen();
     };
     class Multiply : public BinaryOp {
     public:
       Multiply(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+      virtual llvm::Value *Codegen();
     };
     class Eq : public BinaryOp { // TODO replace builtin == with Eq typeclass
-      public: Eq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+    public:
+      Eq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+      virtual llvm::Value *Codegen();
     };
 
     class Seq : public BinaryOp {
     public:
       Seq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+      virtual llvm::Value *Codegen();
     };
 
     class Val : public Expr {
       std::string Name;
-      Expr* Value;
+      Expr* Body;
     public:
-      Val(const std::string &name, Expr& value): Name(name), Value(&value) {}
+      Val(const std::string &name, Expr& body): Name(name), Body(&body) {}
+      virtual llvm::Value *Codegen();
     };
 
     class If : public Expr {
@@ -67,6 +87,7 @@ namespace SPL {
     public:
       If(Expr& cond, Expr& then, Expr& el)
         : Cond(&cond), Then(&then), Else(&el) {}
+      virtual llvm::Value *Codegen();
     };
 
     class Call : public Expr {
@@ -75,6 +96,7 @@ namespace SPL {
     public:
       Call(const std::string &callee, const std::vector<Expr*> &args)
         : Callee(callee), Args(args) {}
+      virtual llvm::Value *Codegen();
     };
 
     class Function : public Expr {
@@ -87,6 +109,7 @@ namespace SPL {
       Function(const std::string &name, const std::vector<std::string> &args,
         Expr &body, Purity purity):
         Name(name), Args(args), Body(&body), Pureness(purity) {}
+      virtual llvm::Value *Codegen();
     };
 
     class File {
@@ -94,6 +117,7 @@ namespace SPL {
       std::vector<Function*> Functions;
     public:
       File(const std::vector<Function*> &funcs): Functions(funcs) {}
+      virtual llvm::Value *Codegen();
     };
   };
 
