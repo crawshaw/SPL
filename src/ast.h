@@ -45,6 +45,11 @@ namespace SPL {
       Multiply(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
     };
 
+    class Seq : public BinaryOp {
+    public:
+      Seq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+    };
+
     class Call : public Expr {
       std::string Callee;
       std::vector<Expr*> Args;
@@ -56,11 +61,11 @@ namespace SPL {
     class Function : public Expr {
       std::string Name;
       std::vector<std::string> Args;
-      std::vector<Expr*> Body;
+      Expr* Body;
 
     public:
       Function(const std::string &name, const std::vector<std::string> &args,
-        const std::vector<Expr*> body) : Name(name), Args(args), Body(body) {}
+        Expr &body) : Name(name), Args(args), Body(&body) {}
     };
 
     class File {

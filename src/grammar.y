@@ -33,14 +33,14 @@ static std::vector<std::string> args;
 exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | exp '-' exp { $$ = new AST::Subtract(*$1, *$3); }
     | exp '*' exp { $$ = new AST::Multiply(*$1, *$3); }
+    | exp ';' exp { $$ = new AST::Seq(*$1, *$3); }
+    | '{' exp '}' { $$ = $2; }
     | IDENT       { $$ = new AST::Variable(*$1); }
     | NUMBER      { $$ = new AST::Number($1); }
-    | DEF IDENT '(' args ')' {
+    | DEF IDENT '(' args ')' '=' exp {
       std::vector<std::string> arguments = args;
       args.clear();
-      std::cout << "arguments size=" << arguments.size() << std::endl;
-      std::vector<AST::Expr*> body;
-      $$ = new AST::Function(*$2, arguments, body);
+      $$ = new AST::Function(*$2, arguments, *$7);
     }
 
 args :
