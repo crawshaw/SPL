@@ -1,8 +1,11 @@
-all: build/spl.o
+all: build/spl
 
-build/spl.o: src/spl.cpp
+build/grammar.c: src/grammar.y
 	@mkdir -p build
-	g++ -g -c -o $@ $^
+	bison -o $@ $^
+
+build/spl: build/grammar.c
+	g++ -I src -o $@ $<
 
 clean:
 	rm -rf build
