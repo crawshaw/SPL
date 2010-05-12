@@ -1,14 +1,8 @@
 #include "llvm/DerivedTypes.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
-#include "llvm/PassManager.h"
-#include "llvm/Analysis/Verifier.h"
-//include "llvm/Support/IRBuilder.h"
 
 #include <string>
 #include <vector>
 #include <sstream>
-
 
 namespace SPL {
   namespace AST {
@@ -43,6 +37,7 @@ namespace SPL {
     };
 
     class BinaryOp : public Expr {
+    protected:
       Expr *LHS, *RHS;
     public:
       BinaryOp(Expr &lhs, Expr &rhs): LHS(&lhs), RHS(&rhs) {};
@@ -74,11 +69,13 @@ namespace SPL {
       virtual llvm::Value *Codegen();
     };
 
-    class Val : public Expr {
+    class Bind: public Expr {
       std::string Name;
+      Expr* Init;
       Expr* Body;
     public:
-      Val(const std::string &name, Expr& body): Name(name), Body(&body) {}
+      Bind(const std::string &name, Expr& init, Expr& body)
+        : Name(name), Init(&init), Body(&body) {}
       virtual llvm::Value *Codegen();
     };
 
@@ -103,12 +100,15 @@ namespace SPL {
       std::string Name;
       std::vector<std::string> Args;
       Expr* Body;
+      Expr* Context;
       Purity Pureness;
 
     public:
       Function(const std::string &name, const std::vector<std::string> &args,
-        Expr &body, Purity purity):
-        Name(name), Args(args), Body(&body), Pureness(purity) {}
+        Expr &body, Expr *context, Purity purity):
+        Name(name), Args(args), Body(&body), Context(context),
+        Pureness(purity) {}
+      void setContext(Expr &context) { Context = &context; }
       virtual llvm::Value *Codegen();
     };
 

@@ -6,7 +6,7 @@ using namespace SPL;
 void yyerror(const char *error);
 int yylex();
 
-static std::vector<std::string> args;
+static std::vector<AST::Expr*> toplevel;
 %}
 
 %locations
@@ -14,19 +14,26 @@ static std::vector<std::string> args;
 
 %union {
   AST::Expr *exp;
+  AST::Function *fun;
   int value;
   std::string *ident;
+  std::vector<std::string> *args;
+  std::vector<AST::Expr*> *callargs;
 }
 
-%type <exp>  exp
-%type <value> NUMBER
-%type <ident> IDENT
+%type <exp>       exp
+%type <value>     NUMBER
+%type <ident>     IDENT
+%type <args>      args
+%type <callargs>  callargs
+%type <fun>       fun
 
+// TODO: add TK_
 %token DEF
 %token IO
 %token IMP
 %token VAR
-%token VAL
+%token TK_VAL
 %token IF
 %token THEN
 %token ELSE
@@ -39,6 +46,9 @@ static std::vector<std::string> args;
 %left '*'
 %%
 
+top :
+    | fun top { toplevel.push_back($1); }
+
 exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | exp '-' exp { $$ = new AST::Subtract(*$1, *$3); }
     | exp '*' exp { $$ = new AST::Multiply(*$1, *$3); }
@@ -48,26 +58,32 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | IDENT       { $$ = new AST::Variable(*$1); }
     | NUMBER      { $$ = new AST::Number($1); }
     | IF exp THEN exp ELSE exp  { $$ = new AST::If(*$2, *$4, *$6); }
-    | VAL IDENT '=' exp         { $$ = new AST::Val(*$2, *$4); }
-    | DEF IDENT '(' args ')' '=' exp {
-      std::vector<std::string> arguments = args;
-      args.clear();
-      $$ = new AST::Function(*$2, arguments, *$7, AST::Pure);
-    }
-    | IO IDENT '(' args ')' '=' exp {
-      std::vector<std::string> arguments = args;
-      args.clear();
-      $$ = new AST::Function(*$2, arguments, *$7, AST::FunIO);
-    }
-    | IMP IDENT '(' args ')' '=' exp {
-      std::vector<std::string> arguments = args;
-      args.clear();
-      $$ = new AST::Function(*$2, arguments, *$7, AST::Impure);
+    | TK_VAL IDENT '=' exp ';' exp { $$ = new AST::Bind(*$2, *$4, *$6); }
+    | IDENT '(' callargs ')' { $$ = new AST::Call(*$1, *$3); }
+    | fun ';' exp {
+      $1->setContext(*$3);
+      AST::Expr* expr = $1;
+      $$ = expr;
     }
 
-args :
-     | IDENT { args.push_back(*$1); }
-     | args ',' IDENT { args.push_back(*$3); }
+fun : DEF IDENT '(' args ')' '=' '{' exp '}' {
+      $$ = new AST::Function(*$2, *$4, *$8, NULL, AST::Pure);
+    }
+    | IO IDENT '(' args ')' '=' '{' exp '}' {
+      $$ = new AST::Function(*$2, *$4, *$8, NULL, AST::FunIO);
+    }
+    | IMP IDENT '(' args ')' '=' '{' exp '}' {
+      $$ = new AST::Function(*$2, *$4, *$8, NULL, AST::Impure);
+    }
+
+args  : { $$ = new std::vector<std::string>(); }
+      | IDENT { $$ = new std::vector<std::string>(); $$->push_back(*$1); }
+      | args ',' IDENT { $1->push_back(*$3); $$ = $1; }
+
+callargs
+      : { $$ = new std::vector<AST::Expr*>(); }
+      | exp { $$ = new std::vector<AST::Expr*>(); $$->push_back($1); }
+      | callargs ',' exp { $1->push_back($3); $$ = $1; }
 
 %%
 
@@ -141,7 +157,7 @@ int yylex() {
   if (StrVal == "io")  return IO;
   if (StrVal == "imp") return IMP;
   if (StrVal == "var") return VAR;
-  if (StrVal == "val") return VAL;
+  if (StrVal == "val") return TK_VAL;
   if (StrVal == "if")   return IF;
   if (StrVal == "then") return THEN;
   if (StrVal == "else") return ELSE;

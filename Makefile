@@ -1,21 +1,16 @@
 test: build/spl
-	@echo 'Some very basic tests:'
-	echo '45 + 3' | ./$^
-	echo 'def f(x,y,z) = x + y + z' | ./$^
-	echo 'def f(x,y,z) = { z*x }' | ./$^
-	echo 'imp f(x,y,z) = { z*x }' | ./$^
-	echo 'io  f(x,y,z) = { z*x }' | ./$^
-	echo 'def f(x,y) = if x == y then 1 else 0' | ./$^
+	@echo 'Running tests:'
+	@for f in `ls tests/*.spl`; do echo "  $$f"; cat $$f | ./$^; done
+
+build/grammar.cpp: src/ast.h
+build/codegen.cpp: src/ast.h
 
 build/grammar.cpp: src/grammar.y
 	@mkdir -p build
 	bison -o $@ $<
 
-LLVMCONFIG=/Users/crawshaw/repo/llvm-2.7/Release/bin/llvm-config
-LLVMFLAGS=$(shell $(LLVMCONFIG) --cxxflags)
-
 build/spl: build/grammar.cpp src/codegen.cpp
-	g++ $(LLVMFLAGS) -I src -o $@ $^
+	llvm-g++ `llvm-config --cxxflags --ldflags --libs` -I src -o $@ $^
 
 clean:
 	rm -rf build
