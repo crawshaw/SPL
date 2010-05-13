@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <set>
 #include <sstream>
 
 namespace SPL {
@@ -11,6 +12,7 @@ namespace SPL {
     class Expr {
     public:
       virtual llvm::Value *Codegen() = 0;
+      virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
     };
 
     // TODO: more general literal
@@ -26,6 +28,7 @@ namespace SPL {
     public:
       Variable(const std::string &name): Name(name) {}
       virtual llvm::Value *Codegen();
+      virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
     };
 
     class UnaryOp : public Expr {};
@@ -34,6 +37,7 @@ namespace SPL {
     public:
       Not(Expr &expr): SubExpr(&expr) {};
       virtual llvm::Value *Codegen();
+      virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
     };
 
     class BinaryOp : public Expr {
@@ -41,6 +45,7 @@ namespace SPL {
       Expr *LHS, *RHS;
     public:
       BinaryOp(Expr &lhs, Expr &rhs): LHS(&lhs), RHS(&rhs) {};
+      virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
     };
     class Add : public BinaryOp {
     public:
@@ -77,6 +82,7 @@ namespace SPL {
       Bind(const std::string &name, Expr& init, Expr& body)
         : Name(name), Init(&init), Body(&body) {}
       virtual llvm::Value *Codegen();
+      virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
     };
 
     class If : public Expr {
@@ -85,6 +91,7 @@ namespace SPL {
       If(Expr& cond, Expr& then, Expr& el)
         : Cond(&cond), Then(&then), Else(&el) {}
       virtual llvm::Value *Codegen();
+      virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
     };
 
     class Call : public Expr {
@@ -94,9 +101,10 @@ namespace SPL {
       Call(const std::string &callee, const std::vector<Expr*> &args)
         : Callee(callee), Args(args) {}
       virtual llvm::Value *Codegen();
+      virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
     };
 
-    class Function : public Expr {
+    class Func: public Expr {
       std::string Name;
       std::vector<std::string> Args;
       Expr* Body;
@@ -104,19 +112,20 @@ namespace SPL {
       Purity Pureness;
 
     public:
-      Function(const std::string &name, const std::vector<std::string> &args,
+      Func(const std::string &name, const std::vector<std::string> &args,
         Expr &body, Expr *context, Purity purity):
         Name(name), Args(args), Body(&body), Context(context),
         Pureness(purity) {}
       void setContext(Expr &context) { Context = &context; }
       virtual llvm::Value *Codegen();
+      virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
     };
 
     class File {
       std::string Name;
-      std::vector<Function*> Functions;
+      std::vector<Func*> Functions;
     public:
-      File(const std::vector<Function*> &funcs): Functions(funcs) {}
+      File(const std::vector<Func*> &funcs): Functions(funcs) {}
       virtual llvm::Value *Codegen();
     };
   };

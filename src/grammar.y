@@ -14,7 +14,7 @@ static std::vector<AST::Expr*> toplevel;
 
 %union {
   AST::Expr *exp;
-  AST::Function *fun;
+  AST::Func *fun;
   int value;
   std::string *ident;
   std::vector<std::string> *args;
@@ -67,13 +67,13 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     }
 
 fun : DEF IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Function(*$2, *$4, *$8, NULL, AST::Pure);
+      $$ = new AST::Func(*$2, *$4, *$8, NULL, AST::Pure);
     }
     | IO IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Function(*$2, *$4, *$8, NULL, AST::FunIO);
+      $$ = new AST::Func(*$2, *$4, *$8, NULL, AST::FunIO);
     }
     | IMP IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Function(*$2, *$4, *$8, NULL, AST::Impure);
+      $$ = new AST::Func(*$2, *$4, *$8, NULL, AST::Impure);
     }
 
 args  : { $$ = new std::vector<std::string>(); }
