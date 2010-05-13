@@ -123,9 +123,9 @@ namespace SPL {
 
     class File {
       std::string Name;
-      std::vector<Func*> Functions;
+      std::vector<Func*> Funcs;
     public:
-      File(const std::vector<Func*> &funcs): Functions(funcs) {}
+      File(const std::vector<Func*> &funcs): Funcs(funcs) {}
       virtual llvm::Value *Codegen();
     };
   };
