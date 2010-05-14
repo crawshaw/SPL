@@ -3,16 +3,21 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <map>
 #include <sstream>
 
 namespace SPL {
   namespace AST {
     enum Purity { Pure, Impure, Sealed, FunIO };
 
+    class Func;
+
     class Expr {
     public:
       virtual llvm::Value *Codegen() = 0;
+      virtual Expr* LambdaLift(std::vector<Func*> &newFuncs);
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
+      virtual void RewriteBinding(std::string &OldName, std::string &NewName);
     };
 
     // TODO: more general literal
@@ -29,23 +34,32 @@ namespace SPL {
       Variable(const std::string &name): Name(name) {}
       virtual llvm::Value *Codegen();
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
+      virtual void RewriteBinding(std::string &OldName, std::string &NewName);
     };
 
-    class UnaryOp : public Expr {};
-    class Not : public UnaryOp {
+    class UnaryOp : public Expr {
+    protected:
       Expr *SubExpr;
+      UnaryOp(Expr &expr): SubExpr(&expr) {};
     public:
-      Not(Expr &expr): SubExpr(&expr) {};
-      virtual llvm::Value *Codegen();
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
+      virtual Expr* LambdaLift(std::vector<Func*> &newFuncsnewFuncsnewFuncs);
+      virtual void RewriteBinding(std::string &OldName, std::string &NewName);
+    };
+    class Not : public UnaryOp {
+    public:
+      Not(Expr &expr): UnaryOp(expr) {};
+      virtual llvm::Value *Codegen();
     };
 
     class BinaryOp : public Expr {
     protected:
       Expr *LHS, *RHS;
-    public:
       BinaryOp(Expr &lhs, Expr &rhs): LHS(&lhs), RHS(&rhs) {};
+    public:
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
+      virtual Expr* LambdaLift(std::vector<Func*> &newFuncsnewFuncsnewFuncs);
+      virtual void RewriteBinding(std::string &OldName, std::string &NewName);
     };
     class Add : public BinaryOp {
     public:
@@ -83,6 +97,8 @@ namespace SPL {
         : Name(name), Init(&init), Body(&body) {}
       virtual llvm::Value *Codegen();
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
+      virtual Expr* LambdaLift(std::vector<Func*> &newFuncsnewFuncsnewFuncs);
+      virtual void RewriteBinding(std::string &OldName, std::string &NewName);
     };
 
     class If : public Expr {
@@ -92,16 +108,20 @@ namespace SPL {
         : Cond(&cond), Then(&then), Else(&el) {}
       virtual llvm::Value *Codegen();
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
+      virtual Expr* LambdaLift(std::vector<Func*> &newFuncsnewFuncsnewFuncs);
+      virtual void RewriteBinding(std::string &OldName, std::string &NewName);
     };
 
     class Call : public Expr {
-      std::string Callee;
+      std::string CalleeName;
       std::vector<Expr*> Args;
     public:
-      Call(const std::string &callee, const std::vector<Expr*> &args)
-        : Callee(callee), Args(args) {}
+      Call(const std::string &calleeName, const std::vector<Expr*> &args)
+        : CalleeName(calleeName), Args(args) {}
       virtual llvm::Value *Codegen();
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
+      virtual Expr* LambdaLift(std::vector<Func*> &newFuncsnewFuncsnewFuncs);
+      virtual void RewriteBinding(std::string &OldName, std::string &NewName);
     };
 
     class Func: public Expr {
@@ -116,9 +136,24 @@ namespace SPL {
         Expr &body, Expr *context, Purity purity):
         Name(name), Args(args), Body(&body), Context(context),
         Pureness(purity) {}
+      std::string GetName() { return Name; }
       void setContext(Expr &context) { Context = &context; }
       virtual llvm::Value *Codegen();
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
+      virtual Expr* LambdaLift(std::vector<Func*> &newFuncsnewFuncsnewFuncs);
+      virtual void RewriteBinding(std::string &OldName, std::string &NewName);
+    };
+
+    class Closure: public Expr {
+      std::string FuncName;
+      std::map<std::string, std::string> ActivationRecord;
+      Func *FuncRef;
+    public:
+      Closure(const std::string &name,
+        const std::map<std::string, std::string> &record):
+        FuncName(name), ActivationRecord(record) {}
+      virtual llvm::Value *Codegen();
+      virtual void RewriteBinding(std::string &OldName, std::string &NewName);
     };
 
     class File {
@@ -126,6 +161,7 @@ namespace SPL {
       std::vector<Func*> Funcs;
     public:
       File(const std::vector<Func*> &funcs): Funcs(funcs) {}
+      void LambdaLiftFuncs();
       virtual llvm::Value *Codegen();
     };
   };

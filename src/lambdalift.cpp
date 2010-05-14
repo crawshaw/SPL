@@ -4,6 +4,142 @@ using namespace std;
 
 namespace SPL { namespace AST {
 
+void File::LambdaLiftFuncs() {
+  vector<Func*> newFuncs;
+
+  for (vector<Func*>::const_iterator it=Funcs.begin(); it!=Funcs.end(); it++)
+    (*it)->LambdaLift(newFuncs);
+
+  Funcs.insert(Funcs.end(), newFuncs.begin(), newFuncs.end());
+}
+
+Expr* Expr::LambdaLift(vector<Func*> &newFuncs) {
+  return this;
+}
+
+Expr* UnaryOp::LambdaLift(vector<Func*> &newFuncs) {
+  SubExpr = SubExpr->LambdaLift(newFuncs);
+  return this;
+}
+
+Expr* BinaryOp::LambdaLift(vector<Func*> &newFuncs) {
+  LHS = LHS->LambdaLift(newFuncs);
+  RHS = RHS->LambdaLift(newFuncs);
+  return this;
+}
+
+Expr* Bind::LambdaLift(vector<Func*> &newFuncs) {
+  Body = Body->LambdaLift(newFuncs);
+  return this;
+}
+
+Expr* If::LambdaLift(vector<Func*> &newFuncs) {
+  Cond = Cond->LambdaLift(newFuncs);
+  Then = Then->LambdaLift(newFuncs);
+  Else = Else->LambdaLift(newFuncs);
+  return this;
+}
+
+Expr* Call::LambdaLift(vector<Func*> &newFuncs) {
+  for (int i=0; i < Args.size(); i++) {
+    Args[i] = Args[i]->LambdaLift(newFuncs);
+  }
+  return this;
+}
+
+Expr* Func::LambdaLift(vector<Func*> &newFuncs) {
+  Body = Body->LambdaLift(newFuncs);
+
+  if (Context == NULL) {
+    // Top-level function.
+    return this;
+  } else {
+    // Inner function definition. Lift and replace with closure.
+    set<string> newB(Args.begin(), Args.end());
+    set<string> *freeVars = FindFreeVars(&newB);
+    vector<string> newArgs(freeVars->begin(), freeVars->end());
+    newArgs.insert(newArgs.end(), Args.begin(), Args.end());
+    string newName("$FromInner$" + Name);
+
+    Body->LambdaLift(newFuncs);
+    Body->RewriteBinding(Name, newName);
+    Context->RewriteBinding(Name, newName);
+    Context->LambdaLift(newFuncs);
+    Func *newFunc = new Func(newName, newArgs, *Body, Context, Pureness);
+
+    map<string, string> activationRecord;
+    set<string>::const_iterator it;
+    for (it=freeVars->begin(); it!=freeVars->end(); it++)
+      activationRecord.insert(pair<string,string>(*it, *it));
+    Closure *closure = new Closure(newName, activationRecord);
+    newFuncs.push_back(newFunc);
+
+    return closure;
+  }
+}
+
+/////////////////////////////////////////////////////////////////////
+
+void Expr::RewriteBinding(string &OldName, string &NewName) {
+}
+
+void Variable::RewriteBinding(string &OldName, string &NewName) {
+  if (Name == OldName)
+    Name = NewName;
+}
+
+void UnaryOp::RewriteBinding(string &OldName, string &NewName) {
+  SubExpr->RewriteBinding(OldName, NewName);
+}
+
+void BinaryOp::RewriteBinding(string &OldName, string &NewName) {
+  LHS->RewriteBinding(OldName, NewName);
+  RHS->RewriteBinding(OldName, NewName);
+}
+
+void Bind::RewriteBinding(string &OldName, string &NewName) {
+  Init->RewriteBinding(OldName, NewName);
+  if (OldName != Name) {
+    // Only rewrite if this Bind is not shadowing the definition.
+    Body->RewriteBinding(OldName, NewName);
+  }
+}
+
+void If::RewriteBinding(string &OldName, string &NewName) {
+  Cond->RewriteBinding(OldName, NewName);
+  Then->RewriteBinding(OldName, NewName);
+  Else->RewriteBinding(OldName, NewName);
+}
+
+void Call::RewriteBinding(string &OldName, string &NewName) {
+  if (CalleeName == OldName)
+    CalleeName = NewName;
+  for (vector<Expr*>::const_iterator it=Args.begin(); it!=Args.end(); it++) {
+    (*it)->RewriteBinding(OldName, NewName);
+  }
+}
+
+void Func::RewriteBinding(string &OldName, string &NewName) {
+  bool bindsOldName = Name == OldName;
+  for (vector<string>::const_iterator it=Args.begin(); it!=Args.end(); it++) {
+    if (*it == OldName)
+      bindsOldName = true;
+  }
+  if (!bindsOldName) {
+    Body->RewriteBinding(OldName, NewName);
+    Context->RewriteBinding(OldName, NewName);
+  }
+}
+
+void Closure::RewriteBinding(string &OldName, string &NewName) {
+  if (FuncName == OldName)
+    FuncName = NewName;
+  // TODO: go through ActivationRecord, replace any matching bindings.
+}
+
+
+/////////////////////////////////////////////////////////////////////
+
 set<string> *Expr::FindFreeVars(set<string> *bindings) {
   return new set<string>();
 }
@@ -15,7 +151,7 @@ set<string> *Variable::FindFreeVars(set<string> *bindings) {
   return ret;
 }
 
-set<string> *Not::FindFreeVars(set<string> *bindings) {
+set<string> *UnaryOp::FindFreeVars(set<string> *bindings) {
   return SubExpr->FindFreeVars(bindings);
 }
 

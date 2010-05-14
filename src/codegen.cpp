@@ -100,4 +100,8 @@ Value *File::Codegen() {
   return NULL;
 }
 
+Value *Closure::Codegen() {
+  return NULL;
+}
+
 }; };
