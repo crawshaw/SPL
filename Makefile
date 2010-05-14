@@ -10,7 +10,7 @@ build/grammar.cpp: src/grammar.y
 	bison -o $@ $<
 
 build/spl: build/grammar.cpp src/codegen.cpp src/lambdalift.cpp
-	llvm-g++ `llvm-config --cxxflags --ldflags --libs` -I src -o $@ $^
+	clang++ `llvm-config --cxxflags --ldflags --libs` -I src -o $@ $^
 
 clean:
 	rm -rf build
