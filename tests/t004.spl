@@ -1,0 +1,6 @@
+
+io main() = {
+  val x = 4;
+  val y = 3;
+  x + y
+}

@@ -7,11 +7,10 @@
 #include <map>
 #include <sstream>
 
-// TODO: not globals
-static llvm::Module *TheModule;
-
 namespace SPL {
   namespace AST {
+    using namespace llvm;
+
     enum Purity { Pure, Impure, Sealed, FunIO };
 
     class Func;
@@ -22,6 +21,7 @@ namespace SPL {
       virtual Expr* LambdaLift(std::vector<Func*> &newFuncs);
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
       virtual void RewriteBinding(std::string &OldName, std::string &NewName);
+      virtual llvm::Type const *getType();
     };
 
     // TODO: more general literal
@@ -103,6 +103,7 @@ namespace SPL {
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
       virtual Expr* LambdaLift(std::vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(std::string &OldName, std::string &NewName);
+      virtual llvm::Type const *getType();
     };
 
     class If : public Expr {
@@ -114,6 +115,7 @@ namespace SPL {
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
       virtual Expr* LambdaLift(std::vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(std::string &OldName, std::string &NewName);
+      virtual llvm::Type const *getType();
     };
 
     class Call : public Expr {
@@ -149,6 +151,9 @@ namespace SPL {
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
       virtual Expr* LambdaLift(std::vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(std::string &OldName, std::string &NewName);
+      std::string getName() { return Name; }
+      llvm::Function *getFunction();
+      std::vector<std::string> &getArgNames() { return Args; }
     };
 
     class Closure: public Expr {
@@ -157,10 +162,12 @@ namespace SPL {
       Func *FuncRef;
     public:
       Closure(const std::string &name,
-        const std::map<std::string, std::string> &record):
-        FuncName(name), ActivationRecord(record) {}
+        const std::map<std::string, std::string> &record, Func *func):
+        FuncName(name), ActivationRecord(record), FuncRef(func) {}
       virtual llvm::Value *Codegen();
+      virtual llvm::Type const *getType();
       virtual void RewriteBinding(std::string &OldName, std::string &NewName);
+      Value *GenCallWith(std::vector<Value*> &args);
     };
 
     class File {

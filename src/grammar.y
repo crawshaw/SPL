@@ -1,6 +1,7 @@
 %{
 #include "ast.h"
 #include <iostream>
+#include <fstream>
 using namespace SPL;
 
 void yyerror(const char *error);
@@ -87,13 +88,28 @@ callargs
 
 %%
 
-int main()
+static std::istream *codein;
+
+void usage() {
+  std::cerr << "usage: spl <filename>" << std::endl;
+  exit(1);
+}
+
+int main(int argc, const char* argv[])
 {
+  if (argc != 2)
+    usage();
+
+  std::string fileName(argv[1]);
+  std::ifstream infile(argv[1]);
+  if (!infile.is_open())
+    usage();
+  codein = &infile;
+
   int ret = yyparse();
   if (ret)
     return ret;
 
-  std::string fileName("<stdin>");
   std::cout << "Parsed, " << toplevel.size() << " functions." << std::endl;
   AST::File file(fileName, toplevel);
 
@@ -134,16 +150,16 @@ bool isaspecial(int ch) {
 }
 
 int yylex() {
-  int LastChar = std::cin.get();
+  int LastChar = codein->get();
 
   while (isspace(LastChar))
-    LastChar = std::cin.get();
+    LastChar = codein->get();
 
   if (isdigit(LastChar)) {
     std::string num;
     num += LastChar;
-    while (isdigit(std::cin.peek()))
-      num += std::cin.get();
+    while (isdigit(codein->peek()))
+      num += codein->get();
 
     int NumVal;
     SPL::Util::from_string<int>(NumVal, num, std::dec);
@@ -160,8 +176,8 @@ int yylex() {
   // Collect until whitespace.
   std::string StrVal = "";
   StrVal += LastChar;
-  while (!isspace(std::cin.peek()) && !isaspecial(std::cin.peek()))
-    StrVal += std::cin.get();
+  while (!isspace(codein->peek()) && !isaspecial(codein->peek()))
+    StrVal += codein->get();
 
   if (StrVal == "def") return DEF;
   if (StrVal == "io")  return IO;

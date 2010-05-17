@@ -1,0 +1,6 @@
+def f(x,y,z) = {
+  def g(foo) = { if foo == 7 then 1 else foo };
+  g(x) + g(y) + g(z)
+}
+
+io main() = { f(7, 2, 3) }

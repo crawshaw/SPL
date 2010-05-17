@@ -21,10 +21,25 @@ static IRBuilder<> Builder(getGlobalContext());
 namespace SPL { namespace AST {
 
 // TODO: not globals
+static std::map<std::string, Expr*> NamedExpr;
 static std::map<std::string, AllocaInst*> NamedValues;
 static Module *TheModule;
 static FunctionPassManager *TheFPM;
 static ExecutionEngine *TheExecutionEngine;
+
+Type const *Expr::getType() {
+  return Type::getInt32Ty(getGlobalContext());
+}
+Type const *Closure::getType() {
+  std::cout << "closure tag 1" << std::endl;
+  const FunctionType *ft = FuncRef->getFunction()->getFunctionType();
+  std::cout << "closure tag 2" << std::endl;
+  return PointerType::getUnqual(ft);
+}
+
+Type const *Bind::getType() { return Body->getType(); }
+Type const *If::getType() { return Then->getType(); }
+
 
 Value *Number::Codegen() {
   return ConstantInt::get(getGlobalContext(), APInt(32, Val, true));
@@ -64,22 +79,24 @@ Value *Seq::Codegen() {
 }
 
 Value *Bind::Codegen() {
-  Value *InitVal = Body->Codegen();
+  Value *InitVal = Init->Codegen();
   Function *TheFunction = Builder.GetInsertBlock()->getParent();
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
     TheFunction->getEntryBlock().begin());
-  AllocaInst *Alloca = TmpB.CreateAlloca(
-    Type::getInt32Ty(getGlobalContext()), 0, Name.c_str());
+  AllocaInst *Alloca = TmpB.CreateAlloca(Init->getType(), 0, Name.c_str());
 
   Builder.CreateStore(InitVal, Alloca);
 
-  AllocaInst *OldBinding = NamedValues[Name];
+  Expr *OldExpr = NamedExpr[Name];
+  AllocaInst *OldValue = NamedValues[Name];
+  NamedExpr[Name] = Init;
   NamedValues[Name] = Alloca;
 
   Value *BodyValue = Body->Codegen();
   if (BodyValue == 0) return 0;
 
-  NamedValues[Name] = OldBinding;
+  NamedExpr[Name] = OldExpr;
+  NamedValues[Name] = OldValue;
 
   return BodyValue;
 }
@@ -88,8 +105,32 @@ Value *If::Codegen() {
   return NULL;
 }
 
+Value *Closure::GenCallWith(std::vector<Value*> &argVals) {
+  std::vector<Value*> args;
+  std::vector<std::string> argNames = FuncRef->getArgNames();
+  for (unsigned i=0, e=argNames.size(); i != e; ++i)
+    args.push_back(NamedValues[ActivationRecord[argNames[i]]]);
+  for (unsigned i=0, e=argVals.size(); i != e; ++i)
+    args.push_back(argVals[i]);
+
+  return Builder.CreateCall(
+    FuncRef->getFunction(), args.begin(), args.end(), "calltmp");
+}
+
 Value *Call::Codegen() {
-  return NULL;
+  std::vector<Value*> argVals;
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    argVals.push_back(Args[i]->Codegen());
+
+  if (Closure *cl = dynamic_cast<Closure*>(NamedExpr[CalleeName])) {
+    return cl->GenCallWith(argVals);
+  } else if (Func *fn = dynamic_cast<Func*>(NamedExpr[CalleeName])) {
+    return Builder.CreateCall(
+      fn->getFunction(), argVals.begin(), argVals.end(), "calltmp");
+  } else {
+    std::cerr << "Can only call function or closure." << std::endl;
+    exit(1);
+  }
 }
 
 void Func::createArgAllocas() {
@@ -104,7 +145,10 @@ void Func::createArgAllocas() {
   }
 }
 
-Value *Func::Codegen() {
+Function *Func::getFunction() {
+  if (function)
+    return function;
+
   std::vector<const Type*> ArgTypes(Args.size(),
     Type::getInt32Ty(getGlobalContext()));
   FunctionType *ft = FunctionType::get(Type::getInt32Ty(
@@ -121,6 +165,12 @@ Value *Func::Codegen() {
   for (Function::arg_iterator ai=function->arg_begin(); idx != Args.size();
       ++ai,++idx)
     ai->setName(Args[idx]);
+
+  return function;
+}
+
+Value *Func::Codegen() {
+  Function *function = getFunction();
 
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(getGlobalContext(), "entry", function);
@@ -143,6 +193,11 @@ Value *Func::Codegen() {
 
 Value *File::Codegen() {
   for (std::vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++){
+    NamedValues[(*i)->getName()] = NULL; //(*i)->getFunction();
+    NamedExpr[(*i)->getName()] = *i;
+  }
+
+  for (std::vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++){
     (*i)->Codegen();
   }
 
@@ -159,6 +214,7 @@ void File::run() {
   std::cout << "tag 2" << std::endl;
   TheFPM = &fpm;
 
+  fpm.doInitialization();
   /*
   fpm.add(new TargetData(*TheExecutionEngine->getTargetData()));
   std::cout << "tag 3" << std::endl;
@@ -180,7 +236,7 @@ void File::run() {
 }
 
 Value *Closure::Codegen() {
-  return NULL;
+  return FuncRef->getFunction();
 }
 
 }; };
