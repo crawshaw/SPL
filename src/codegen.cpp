@@ -20,7 +20,11 @@ static IRBuilder<> Builder(getGlobalContext());
 
 namespace SPL { namespace AST {
 
+// TODO: not globals
 static std::map<std::string, AllocaInst*> NamedValues;
+static Module *TheModule;
+static FunctionPassManager *TheFPM;
+static ExecutionEngine *TheExecutionEngine;
 
 Value *Number::Codegen() {
   return ConstantInt::get(getGlobalContext(), APInt(32, Val, true));
@@ -61,11 +65,11 @@ Value *Seq::Codegen() {
 
 Value *Bind::Codegen() {
   Value *InitVal = Body->Codegen();
-  llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+  Function *TheFunction = Builder.GetInsertBlock()->getParent();
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
     TheFunction->getEntryBlock().begin());
   AllocaInst *Alloca = TmpB.CreateAlloca(
-    Type::getDoubleTy(getGlobalContext()), 0, Name.c_str());
+    Type::getInt32Ty(getGlobalContext()), 0, Name.c_str());
 
   Builder.CreateStore(InitVal, Alloca);
 
@@ -88,8 +92,53 @@ Value *Call::Codegen() {
   return NULL;
 }
 
+void Func::createArgAllocas() {
+  Function::arg_iterator ai = function->arg_begin();
+  for (unsigned idx=0, e = Args.size(); idx != e; ++idx, ++ai) {
+    IRBuilder<> TmpB(&function->getEntryBlock(),
+      function->getEntryBlock().begin());
+    AllocaInst *alloca = TmpB.CreateAlloca(
+      Type::getInt32Ty(getGlobalContext()), 0, Args[idx].c_str());
+    Builder.CreateStore(ai, alloca);
+    // TODO: NamedValues[Args[idx]] = Alloca;
+  }
+}
+
 Value *Func::Codegen() {
-  return NULL;
+  std::vector<const Type*> ArgTypes(Args.size(),
+    Type::getInt32Ty(getGlobalContext()));
+  FunctionType *ft = FunctionType::get(Type::getInt32Ty(
+    getGlobalContext()), ArgTypes, false);
+  function = Function::Create(ft, Function::ExternalLinkage, Name, TheModule);
+
+  if (function->getName() != Name) {
+    // Terrible conflict
+    std::cout << "Function redeclaration" << std::endl;
+    return 0;
+  }
+
+  unsigned idx = 0;
+  for (Function::arg_iterator ai=function->arg_begin(); idx != Args.size();
+      ++ai,++idx)
+    ai->setName(Args[idx]);
+
+  // Create a new basic block to start insertion into.
+  BasicBlock *BB = BasicBlock::Create(getGlobalContext(), "entry", function);
+  Builder.SetInsertPoint(BB);
+
+  createArgAllocas();
+
+  Value *ret = Body->Codegen();
+  if (ret == NULL) {
+    function->eraseFromParent();
+    return NULL;
+  }
+
+  Builder.CreateRet(ret);
+  verifyFunction(*function);
+  // TODO: TheFPM->run(*function);
+
+  return function;
 }
 
 Value *File::Codegen() {
@@ -98,6 +147,36 @@ Value *File::Codegen() {
   }
 
   return NULL;
+}
+
+void File::run() {
+  std::cout << "tag 1" << std::endl;
+  std::string errStr;
+  Module module("my module", getGlobalContext());
+  TheModule = &module;
+  TheExecutionEngine = EngineBuilder(TheModule).setErrorStr(&errStr).create();
+  FunctionPassManager fpm(TheModule);
+  std::cout << "tag 2" << std::endl;
+  TheFPM = &fpm;
+
+  /*
+  fpm.add(new TargetData(*TheExecutionEngine->getTargetData()));
+  std::cout << "tag 3" << std::endl;
+  fpm.add(createPromoteMemoryToRegisterPass());
+  fpm.add(createInstructionCombiningPass());
+  fpm.add(createReassociatePass());
+  fpm.add(createGVNPass());
+  fpm.add(createCFGSimplificationPass());
+  */
+  std::cout << "tag 4" << std::endl;
+
+  LambdaLiftFuncs();
+  std::cout << "tag 5" << std::endl;
+  Codegen();
+  std::cout << "tag 6" << std::endl;
+
+  TheModule->dump();
+  std::cout << "tag 7" << std::endl;
 }
 
 Value *Closure::Codegen() {

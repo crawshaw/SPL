@@ -1,10 +1,14 @@
 #include "llvm/DerivedTypes.h"
+#include "llvm/Support/IRBuilder.h"
 
 #include <string>
 #include <vector>
 #include <set>
 #include <map>
 #include <sstream>
+
+// TODO: not globals
+static llvm::Module *TheModule;
 
 namespace SPL {
   namespace AST {
@@ -130,6 +134,9 @@ namespace SPL {
       Expr* Body;
       Expr* Context;
       Purity Pureness;
+      llvm::Function *function;
+
+    void createArgAllocas();
 
     public:
       Func(const std::string &name, const std::vector<std::string> &args,
@@ -160,9 +167,11 @@ namespace SPL {
       std::string Name;
       std::vector<Func*> Funcs;
     public:
-      File(const std::vector<Func*> &funcs): Funcs(funcs) {}
+      File(std::string &name, const std::vector<Func*> &funcs)
+        : Name(name), Funcs(funcs) {}
       void LambdaLiftFuncs();
       virtual llvm::Value *Codegen();
+      void run();
     };
   };
 

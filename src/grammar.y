@@ -6,7 +6,7 @@ using namespace SPL;
 void yyerror(const char *error);
 int yylex();
 
-static std::vector<AST::Expr*> toplevel;
+static std::vector<AST::Func*> toplevel;
 %}
 
 %locations
@@ -89,7 +89,17 @@ callargs
 
 int main()
 {
-  return yyparse();
+  int ret = yyparse();
+  if (ret)
+    return ret;
+
+  std::string fileName("<stdin>");
+  std::cout << "Parsed, " << toplevel.size() << " functions." << std::endl;
+  AST::File file(fileName, toplevel);
+
+  file.run();
+
+  return 0;
 }
 
 void yyerror(const char *error)

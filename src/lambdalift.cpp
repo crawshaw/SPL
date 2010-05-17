@@ -1,4 +1,5 @@
 #include "ast.h"
+#include <iostream>
 
 using namespace std;
 
@@ -9,6 +10,8 @@ void File::LambdaLiftFuncs() {
 
   for (vector<Func*>::const_iterator it=Funcs.begin(); it!=Funcs.end(); it++)
     (*it)->LambdaLift(newFuncs);
+
+  std::cout << "Lifted " << newFuncs.size() << " functions." << std::endl;
 
   Funcs.insert(Funcs.end(), newFuncs.begin(), newFuncs.end());
 }
@@ -65,7 +68,7 @@ Expr* Func::LambdaLift(vector<Func*> &newFuncs) {
     Body->RewriteBinding(Name, newName);
     Context->RewriteBinding(Name, newName);
     Context->LambdaLift(newFuncs);
-    Func *newFunc = new Func(newName, newArgs, *Body, Context, Pureness);
+    Func *newFunc = new Func(newName, newArgs, *Body, NULL, Pureness);
 
     map<string, string> activationRecord;
     set<string>::const_iterator it;
@@ -74,7 +77,7 @@ Expr* Func::LambdaLift(vector<Func*> &newFuncs) {
     Closure *closure = new Closure(newName, activationRecord);
     newFuncs.push_back(newFunc);
 
-    return closure;
+    return new Bind(Name, *closure, *Context);
   }
 }
 
