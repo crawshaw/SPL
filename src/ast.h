@@ -138,7 +138,7 @@ namespace SPL {
       Purity Pureness;
       llvm::Function *function;
 
-    void createArgAllocas();
+    std::vector<AllocaInst*> *createArgAllocas();
 
     public:
       Func(const std::string &name, const std::vector<std::string> &args,

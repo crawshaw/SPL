@@ -133,7 +133,9 @@ Value *Call::Codegen() {
   }
 }
 
-void Func::createArgAllocas() {
+std::vector<AllocaInst*> *Func::createArgAllocas() {
+  std::vector<AllocaInst*> *argAllocas = new std::vector<AllocaInst*>();
+
   Function::arg_iterator ai = function->arg_begin();
   for (unsigned idx=0, e = Args.size(); idx != e; ++idx, ++ai) {
     IRBuilder<> TmpB(&function->getEntryBlock(),
@@ -141,8 +143,10 @@ void Func::createArgAllocas() {
     AllocaInst *alloca = TmpB.CreateAlloca(
       Type::getInt32Ty(getGlobalContext()), 0, Args[idx].c_str());
     Builder.CreateStore(ai, alloca);
-    // TODO: NamedValues[Args[idx]] = Alloca;
+    argAllocas->push_back(alloca);
   }
+
+  return argAllocas;
 }
 
 Function *Func::getFunction() {
@@ -176,9 +180,21 @@ Value *Func::Codegen() {
   BasicBlock *BB = BasicBlock::Create(getGlobalContext(), "entry", function);
   Builder.SetInsertPoint(BB);
 
-  createArgAllocas();
+  std::vector<AllocaInst*> oldBindings;
+  std::vector<AllocaInst*> &argAllocas = *createArgAllocas();
+  assert(Args.size() == argAllocas.size());
+
+  for (unsigned i=0, e=Args.size(); i != e; ++i) {
+    oldBindings.push_back(
+      NamedValues.count(Args[i]) == 0 ? NULL : NamedValues[Args[i]]);
+    NamedValues[Args[i]] = argAllocas[i];
+  }
 
   Value *ret = Body->Codegen();
+
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    NamedValues[Args[i]] = oldBindings[i];
+
   if (ret == NULL) {
     function->eraseFromParent();
     return NULL;
