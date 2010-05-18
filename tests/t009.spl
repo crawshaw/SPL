@@ -1,6 +1,3 @@
-def f(x,y,z) = {
-  def g(foo) = { if foo == 7 then 1 else foo };
-  g(x) + g(y) + g(z)
-}
+def f(x,y) = { if x == y then x + y else y }
 
-io main() = { f(7, 2, 3) }
+io main() = { f(5,5) + f(5,4) }

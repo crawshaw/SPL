@@ -102,7 +102,42 @@ Value *Bind::Codegen() {
 }
 
 Value *If::Codegen() {
-  return NULL;
+  Value *condVal = Cond->Codegen();
+  if (condVal == NULL) return NULL;
+  if (!condVal->getType()->isIntegerTy()) {
+    std::cerr << "Branch condition is not integer type." << std::endl;
+    return NULL;
+  }
+
+  Function *fn = Builder.GetInsertBlock()->getParent();
+
+  BasicBlock *thenBB = BasicBlock::Create(getGlobalContext(), "then", fn);
+  BasicBlock *elseBB = BasicBlock::Create(getGlobalContext(), "else");
+  BasicBlock *mergeBB = BasicBlock::Create(getGlobalContext(), "ifcont");
+  Builder.CreateCondBr(condVal, thenBB, elseBB);
+
+  Builder.SetInsertPoint(thenBB);
+  Value *thenVal = Then->Codegen();
+  if (thenVal == NULL) return NULL;
+
+  Builder.CreateBr(mergeBB);
+  thenBB = Builder.GetInsertBlock();
+
+  fn->getBasicBlockList().push_back(elseBB);
+  Builder.SetInsertPoint(elseBB);
+  Value *elseVal = Else->Codegen();
+  if (elseVal == NULL) return NULL;
+
+  Builder.CreateBr(mergeBB);
+  elseBB = Builder.GetInsertBlock();
+
+  fn->getBasicBlockList().push_back(mergeBB);
+  Builder.SetInsertPoint(mergeBB);
+  PHINode *pn = Builder.CreatePHI(Then->getType(), "iftmp");
+  pn->addIncoming(thenVal, thenBB);
+  pn->addIncoming(elseVal, elseBB);
+
+  return pn;
 }
 
 Value *Closure::GenCallWith(std::vector<Value*> &argVals) {
