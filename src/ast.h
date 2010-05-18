@@ -30,6 +30,7 @@ namespace SPL {
     public:
       Number(int val): Val(val) {}
       virtual llvm::Value *Codegen();
+      virtual llvm::Type const *getType();
     };
 
     class Variable : public Expr {
@@ -64,6 +65,7 @@ namespace SPL {
       virtual std::set<std::string> *FindFreeVars(std::set<std::string> *b);
       virtual Expr* LambdaLift(std::vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(std::string &OldName, std::string &NewName);
+      virtual llvm::Type const *getType();
     };
     class Add : public BinaryOp {
     public:
@@ -84,6 +86,7 @@ namespace SPL {
     public:
       Eq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
       virtual llvm::Value *Codegen();
+      virtual llvm::Type const *getType();
     };
 
     class Seq : public BinaryOp {

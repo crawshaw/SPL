@@ -37,6 +37,9 @@ Type const *Closure::getType() {
   return PointerType::getUnqual(ft);
 }
 
+Type const *Number::getType() { return Type::getInt32Ty(getGlobalContext()); }
+Type const *BinaryOp::getType() { return RHS->getType(); }
+Type const *Eq::getType() { return Type::getInt1Ty(getGlobalContext()); }
 Type const *Bind::getType() { return Body->getType(); }
 Type const *If::getType() { return Then->getType(); }
 
