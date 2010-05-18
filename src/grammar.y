@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 using namespace SPL;
+using namespace std;
 
 void yyerror(const char *error);
 int yylex();
@@ -17,9 +18,9 @@ static std::vector<AST::Func*> toplevel;
   AST::Expr *exp;
   AST::Func *fun;
   int value;
-  std::string *ident;
-  std::vector<std::string> *args;
-  std::vector<AST::Expr*> *callargs;
+  string *ident;
+  vector<pair<string,string*>*> *args;
+  vector<AST::Expr*> *callargs;
 }
 
 %type <exp>       exp
@@ -43,6 +44,7 @@ static std::vector<AST::Func*> toplevel;
 %token '('
 %token ')'
 %token ','
+%token ':'
 %left '+'
 %left '*'
 %%
@@ -68,18 +70,41 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     }
 
 fun : DEF IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, *$8, NULL, AST::Pure);
+      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::Pure);
+    }
+    | DEF IDENT '(' args ')' ':' IDENT '=' '{' exp '}' {
+      $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::Pure);
     }
     | IO IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, *$8, NULL, AST::FunIO);
+      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::FunIO);
+    }
+    | IO IDENT '(' args ')' ':' IDENT '=' '{' exp '}' {
+      $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::FunIO);
     }
     | IMP IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, *$8, NULL, AST::Impure);
+      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::Impure);
+    }
+    | IMP IDENT '(' args ')' ':' IDENT '=' '{' exp '}' {
+      $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::Impure);
     }
 
-args  : { $$ = new std::vector<std::string>(); }
-      | IDENT { $$ = new std::vector<std::string>(); $$->push_back(*$1); }
-      | args ',' IDENT { $1->push_back(*$3); $$ = $1; }
+args  : {$$ = new vector<pair<string,string*>*>(); }
+      | IDENT ':' IDENT {
+        $$ = new vector<pair<string,string*>*>();
+        $$->push_back(new pair<string,string*>(*$1, $3));
+      }
+      | IDENT {
+        $$ = new vector<pair<string,string*>*>();
+        $$->push_back(new pair<string,string*>(*$1, NULL));
+      }
+      | args ',' IDENT ':' IDENT {
+        $1->push_back(new pair<string,string*>(*$3, $5));
+        $$ = $1;
+      }
+      | args ',' IDENT {
+        $1->push_back(new pair<string,string*>(*$3, NULL));
+        $$ = $1;
+      }
 
 callargs
       : { $$ = new std::vector<AST::Expr*>(); }

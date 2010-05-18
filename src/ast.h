@@ -136,6 +136,8 @@ namespace SPL {
     class Func: public Expr {
       std::string Name;
       std::vector<std::string> Args;
+      std::vector<std::string*> ArgSTypes;
+      const std::string *RetSType;
       Expr* Body;
       Expr* Context;
       Purity Pureness;
@@ -144,10 +146,24 @@ namespace SPL {
     std::vector<AllocaInst*> *createArgAllocas();
 
     public:
-      Func(const std::string &name, const std::vector<std::string> &args,
-        Expr &body, Expr *context, Purity purity):
-        Name(name), Args(args), Body(&body), Context(context),
-        Pureness(purity) {}
+      Func(const std::string &name,
+          const std::vector<std::pair<std::string,std::string*>*> &args,
+          const std::string* retSType,
+          Expr &body, Expr *context, Purity purity):
+          Name(name), Body(&body), Context(context),
+          RetSType(retSType), Pureness(purity) {
+        for (unsigned i=0, e=args.size(); i != e; ++i) {
+          Args.push_back(args[i]->first);
+          ArgSTypes.push_back(args[i]->second);
+        }
+      }
+      Func(const std::string &name,
+          const std::vector<std::string> &args,
+          const std::vector<std::string*> &argSTypes,
+          Expr &body, Expr *context, Purity purity):
+          Name(name), Args(args), ArgSTypes(argSTypes),
+          Body(&body), Context(context),
+          Pureness(purity) {}
       std::string GetName() { return Name; }
       void setContext(Expr &context) { Context = &context; }
       virtual llvm::Value *Codegen();
