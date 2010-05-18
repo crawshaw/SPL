@@ -14,6 +14,9 @@
 #include <iostream>
 #include <map>
 
+using std::map;
+using std::vector;
+using std::string;
 using namespace llvm;
 
 static IRBuilder<> Builder(getGlobalContext());
@@ -21,8 +24,6 @@ static IRBuilder<> Builder(getGlobalContext());
 namespace SPL { namespace AST {
 
 // TODO: not globals
-static std::map<std::string, Expr*> NamedExpr;
-static std::map<std::string, AllocaInst*> NamedValues;
 static Module *TheModule;
 static FunctionPassManager *TheFPM;
 static ExecutionEngine *TheExecutionEngine;
@@ -44,12 +45,12 @@ Type const *Bind::getType() { return Body->getType(); }
 Type const *If::getType() { return Then->getType(); }
 
 
-Value *Number::Codegen() {
+Value *Number::Codegen(map<string, Expr*> &NamedExprs) {
   return ConstantInt::get(getGlobalContext(), APInt(32, Val, true));
 }
 
-Value *Variable::Codegen() {
-  Value *V = NamedValues[Name];
+Value *Variable::Codegen(map<string, Expr*> &NamedExprs) {
+  Value *V = NamedExprs[Name]->Codegen(NamedExprs);
   if (V == 0) {
     std::cerr << "Unknown variable: `" << Name << "'" << std::endl;
     return NULL;
@@ -57,32 +58,32 @@ Value *Variable::Codegen() {
   return Builder.CreateLoad(V, Name.c_str());
 }
 
-Value *Not::Codegen() {
+Value *Not::Codegen(map<string, Expr*> &NamedExprs) {
   return NULL;
 }
 
-Value *Add::Codegen() {
-  return Builder.CreateAdd(LHS->Codegen(), RHS->Codegen(), "addtmp");
+Value *Add::Codegen(map<string, Expr*> &NamedExprs) {
+  return Builder.CreateAdd(LHS->Codegen(NamedExprs), RHS->Codegen(NamedExprs), "addtmp");
 }
 
-Value *Subtract::Codegen() {
-  return Builder.CreateSub(LHS->Codegen(), RHS->Codegen(), "subtmp");
+Value *Subtract::Codegen(map<string, Expr*> &NamedExprs) {
+  return Builder.CreateSub(LHS->Codegen(NamedExprs), RHS->Codegen(NamedExprs), "subtmp");
 }
 
-Value *Multiply::Codegen() {
-  return Builder.CreateMul(LHS->Codegen(), RHS->Codegen(), "multmp");
+Value *Multiply::Codegen(map<string, Expr*> &NamedExprs) {
+  return Builder.CreateMul(LHS->Codegen(NamedExprs), RHS->Codegen(NamedExprs), "multmp");
 }
 
-Value *Eq::Codegen() {
-  return Builder.CreateICmpEQ(LHS->Codegen(), RHS->Codegen(), "eqtmp");
+Value *Eq::Codegen(map<string, Expr*> &NamedExprs) {
+  return Builder.CreateICmpEQ(LHS->Codegen(NamedExprs), RHS->Codegen(NamedExprs), "eqtmp");
 }
 
-Value *Seq::Codegen() {
+Value *Seq::Codegen(map<string, Expr*> &NamedExprs) {
   return NULL;
 }
 
-Value *Bind::Codegen() {
-  Value *InitVal = Init->Codegen();
+Value *Bind::Codegen(map<string, Expr*> &NamedExprs) {
+  Value *InitVal = Init->Codegen(NamedExprs);
   Function *TheFunction = Builder.GetInsertBlock()->getParent();
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
     TheFunction->getEntryBlock().begin());
@@ -90,22 +91,21 @@ Value *Bind::Codegen() {
 
   Builder.CreateStore(InitVal, Alloca);
 
-  Expr *OldExpr = NamedExpr[Name];
-  AllocaInst *OldValue = NamedValues[Name];
-  NamedExpr[Name] = Init;
-  NamedValues[Name] = Alloca;
+  Expr *OldExpr = NamedExprs[Name];
+  Expr *reg = new Register(Alloca);
+  NamedExprs[Name] = reg;
 
-  Value *BodyValue = Body->Codegen();
+  Value *BodyValue = Body->Codegen(NamedExprs);
   if (BodyValue == 0) return 0;
 
-  NamedExpr[Name] = OldExpr;
-  NamedValues[Name] = OldValue;
+  NamedExprs[Name] = OldExpr;
+  delete reg;
 
   return BodyValue;
 }
 
-Value *If::Codegen() {
-  Value *condVal = Cond->Codegen();
+Value *If::Codegen(map<string, Expr*> &NamedExprs) {
+  Value *condVal = Cond->Codegen(NamedExprs);
   if (condVal == NULL) return NULL;
   if (!condVal->getType()->isIntegerTy()) {
     std::cerr << "Branch condition is not integer type." << std::endl;
@@ -120,7 +120,7 @@ Value *If::Codegen() {
   Builder.CreateCondBr(condVal, thenBB, elseBB);
 
   Builder.SetInsertPoint(thenBB);
-  Value *thenVal = Then->Codegen();
+  Value *thenVal = Then->Codegen(NamedExprs);
   if (thenVal == NULL) return NULL;
 
   Builder.CreateBr(mergeBB);
@@ -128,7 +128,7 @@ Value *If::Codegen() {
 
   fn->getBasicBlockList().push_back(elseBB);
   Builder.SetInsertPoint(elseBB);
-  Value *elseVal = Else->Codegen();
+  Value *elseVal = Else->Codegen(NamedExprs);
   if (elseVal == NULL) return NULL;
 
   Builder.CreateBr(mergeBB);
@@ -143,11 +143,13 @@ Value *If::Codegen() {
   return pn;
 }
 
-Value *Closure::GenCallWith(std::vector<Value*> &argVals) {
-  std::vector<Value*> args;
-  std::vector<std::string> argNames = FuncRef->getArgNames();
+Value *Closure::GenCallWith(
+    vector<Value*> &argVals, map<string,Expr*> &NamedExprs) {
+  vector<Value*> args;
+  vector<string> argNames = FuncRef->getArgNames();
   for (unsigned i=0, e=argNames.size(); i != e; ++i)
-    args.push_back(NamedValues[ActivationRecord[argNames[i]]]);
+    args.push_back(
+      NamedExprs[ActivationRecord[argNames[i]]]->Codegen(NamedExprs));
   for (unsigned i=0, e=argVals.size(); i != e; ++i)
     args.push_back(argVals[i]);
 
@@ -155,14 +157,14 @@ Value *Closure::GenCallWith(std::vector<Value*> &argVals) {
     FuncRef->getFunction(), args.begin(), args.end(), "calltmp");
 }
 
-Value *Call::Codegen() {
-  std::vector<Value*> argVals;
+Value *Call::Codegen(map<string, Expr*> &NamedExprs) {
+  vector<Value*> argVals;
   for (unsigned i=0, e=Args.size(); i != e; ++i)
-    argVals.push_back(Args[i]->Codegen());
+    argVals.push_back(Args[i]->Codegen(NamedExprs));
 
-  if (Closure *cl = dynamic_cast<Closure*>(NamedExpr[CalleeName])) {
-    return cl->GenCallWith(argVals);
-  } else if (Func *fn = dynamic_cast<Func*>(NamedExpr[CalleeName])) {
+  if (Closure *cl = dynamic_cast<Closure*>(NamedExprs[CalleeName])) {
+    return cl->GenCallWith(argVals, NamedExprs);
+  } else if (Func *fn = dynamic_cast<Func*>(NamedExprs[CalleeName])) {
     return Builder.CreateCall(
       fn->getFunction(), argVals.begin(), argVals.end(), "calltmp");
   } else {
@@ -171,8 +173,16 @@ Value *Call::Codegen() {
   }
 }
 
-std::vector<AllocaInst*> *Func::createArgAllocas() {
-  std::vector<AllocaInst*> *argAllocas = new std::vector<AllocaInst*>();
+Value *Closure::Codegen(map<string, Expr*> &NamedExprs) {
+  return FuncRef->getFunction();
+}
+
+Value *Register::Codegen(map<string, Expr*> &NamedExprs) {
+  return Alloca;
+}
+
+vector<AllocaInst*> *Func::createArgAllocas() {
+  vector<AllocaInst*> *argAllocas = new vector<AllocaInst*>();
 
   Function::arg_iterator ai = function->arg_begin();
   for (unsigned idx=0, e = Args.size(); idx != e; ++idx, ++ai) {
@@ -191,7 +201,7 @@ Function *Func::getFunction() {
   if (function)
     return function;
 
-  std::vector<const Type*> ArgTypes(Args.size(),
+  vector<const Type*> ArgTypes(Args.size(),
     Type::getInt32Ty(getGlobalContext()));
   FunctionType *ft = FunctionType::get(Type::getInt32Ty(
     getGlobalContext()), ArgTypes, false);
@@ -211,27 +221,27 @@ Function *Func::getFunction() {
   return function;
 }
 
-Value *Func::Codegen() {
+Value *Func::Codegen(map<string, Expr*> &NamedExprs) {
   Function *function = getFunction();
 
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(getGlobalContext(), "entry", function);
   Builder.SetInsertPoint(BB);
 
-  std::vector<AllocaInst*> oldBindings;
-  std::vector<AllocaInst*> &argAllocas = *createArgAllocas();
+  vector<Expr*> oldBindings;
+  vector<AllocaInst*> &argAllocas = *createArgAllocas();
   assert(Args.size() == argAllocas.size());
 
   for (unsigned i=0, e=Args.size(); i != e; ++i) {
     oldBindings.push_back(
-      NamedValues.count(Args[i]) == 0 ? NULL : NamedValues[Args[i]]);
-    NamedValues[Args[i]] = argAllocas[i];
+      NamedExprs.count(Args[i]) == 0 ? NULL : NamedExprs[Args[i]]);
+    NamedExprs[Args[i]] = new Register(argAllocas[i]);
   }
 
-  Value *ret = Body->Codegen();
+  Value *ret = Body->Codegen(NamedExprs);
 
   for (unsigned i=0, e=Args.size(); i != e; ++i)
-    NamedValues[Args[i]] = oldBindings[i];
+    NamedExprs[Args[i]] = oldBindings[i];
 
   if (ret == NULL) {
     function->eraseFromParent();
@@ -245,22 +255,9 @@ Value *Func::Codegen() {
   return function;
 }
 
-Value *File::Codegen() {
-  for (std::vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++){
-    NamedValues[(*i)->getName()] = NULL; //(*i)->getFunction();
-    NamedExpr[(*i)->getName()] = *i;
-  }
-
-  for (std::vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++){
-    (*i)->Codegen();
-  }
-
-  return NULL;
-}
-
 void File::run() {
   std::cout << "tag 1" << std::endl;
-  std::string errStr;
+  string errStr;
   Module module("my module", getGlobalContext());
   TheModule = &module;
   TheExecutionEngine = EngineBuilder(TheModule).setErrorStr(&errStr).create();
@@ -282,15 +279,19 @@ void File::run() {
 
   LambdaLiftFuncs();
   std::cout << "tag 5" << std::endl;
-  Codegen();
+
+  map<string, Expr*> NamedExprs;
+
+  for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
+    NamedExprs[(*i)->getName()] = *i;
+
+  for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
+    (*i)->Codegen(NamedExprs);
+
   std::cout << "tag 6" << std::endl;
 
   TheModule->dump();
   std::cout << "tag 7" << std::endl;
-}
-
-Value *Closure::Codegen() {
-  return FuncRef->getFunction();
 }
 
 }; };
