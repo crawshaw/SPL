@@ -12,9 +12,12 @@ namespace SPL {
     using llvm::AllocaInst;
     using llvm::Value;
     using llvm::Type;
+    using llvm::Function;
     using std::map;
     using std::vector;
     using std::string;
+    using std::pair;
+    using std::set;
 
     enum Purity { Pure, Impure, Sealed, FunIO };
 
@@ -22,11 +25,11 @@ namespace SPL {
 
     class Expr {
     public:
-      virtual llvm::Value *Codegen(map<string, Expr*> &) = 0;
+      virtual Value *Codegen(map<string, Expr*> &) = 0;
       virtual Expr* LambdaLift(vector<Func*> &newFuncs);
-      virtual std::set<string> *FindFreeVars(std::set<string> *b);
+      virtual set<string> *FindFreeVars(set<string> *b);
       virtual void RewriteBinding(string &OldName, string &NewName);
-      virtual llvm::Type const *getType();
+      virtual Type const *getType();
     };
 
     // TODO: more general literal
@@ -34,16 +37,16 @@ namespace SPL {
       int Val;
     public:
       Number(int val): Val(val) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
-      virtual llvm::Type const *getType();
+      virtual Value *Codegen(map<string, Expr*> &);
+      virtual Type const *getType();
     };
 
     class Variable : public Expr {
       string Name;
     public:
       Variable(const string &name): Name(name) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
-      virtual std::set<string> *FindFreeVars(std::set<string> *b);
+      virtual Value *Codegen(map<string, Expr*> &);
+      virtual set<string> *FindFreeVars(set<string> *b);
       virtual void RewriteBinding(string &OldName, string &NewName);
     };
 
@@ -52,14 +55,14 @@ namespace SPL {
       Expr *SubExpr;
       UnaryOp(Expr &expr): SubExpr(&expr) {};
     public:
-      virtual std::set<string> *FindFreeVars(std::set<string> *b);
+      virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
     };
     class Not : public UnaryOp {
     public:
       Not(Expr &expr): UnaryOp(expr) {};
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
+      virtual Value *Codegen(map<string, Expr*> &);
     };
 
     class BinaryOp : public Expr {
@@ -67,37 +70,37 @@ namespace SPL {
       Expr *LHS, *RHS;
       BinaryOp(Expr &lhs, Expr &rhs): LHS(&lhs), RHS(&rhs) {};
     public:
-      virtual std::set<string> *FindFreeVars(std::set<string> *b);
+      virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
-      virtual llvm::Type const *getType();
+      virtual Type const *getType();
     };
     class Add : public BinaryOp {
     public:
       Add(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
+      virtual Value *Codegen(map<string, Expr*> &);
     };
     class Subtract : public BinaryOp {
     public:
       Subtract(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
+      virtual Value *Codegen(map<string, Expr*> &);
     };
     class Multiply : public BinaryOp {
     public:
       Multiply(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
+      virtual Value *Codegen(map<string, Expr*> &);
     };
     class Eq : public BinaryOp { // TODO replace builtin == with Eq typeclass
     public:
       Eq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
-      virtual llvm::Type const *getType();
+      virtual Value *Codegen(map<string, Expr*> &);
+      virtual Type const *getType();
     };
 
     class Seq : public BinaryOp {
     public:
       Seq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
+      virtual Value *Codegen(map<string, Expr*> &);
     };
 
     class Member : public BinaryOp {
@@ -115,11 +118,11 @@ namespace SPL {
     public:
       Bind(const string &name, Expr& init, Expr& body)
         : Name(name), Init(&init), Body(&body) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
-      virtual std::set<string> *FindFreeVars(std::set<string> *b);
+      virtual Value *Codegen(map<string, Expr*> &);
+      virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
-      virtual llvm::Type const *getType();
+      virtual Type const *getType();
     };
 
     class If : public Expr {
@@ -127,11 +130,11 @@ namespace SPL {
     public:
       If(Expr& cond, Expr& then, Expr& el)
         : Cond(&cond), Then(&then), Else(&el) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
-      virtual std::set<string> *FindFreeVars(std::set<string> *b);
+      virtual Value *Codegen(map<string, Expr*> &);
+      virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
-      virtual llvm::Type const *getType();
+      virtual Type const *getType();
     };
 
     class Call : public Expr {
@@ -140,8 +143,8 @@ namespace SPL {
     public:
       Call(const string &calleeName, const vector<Expr*> &args)
         : CalleeName(calleeName), Args(args) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
-      virtual std::set<string> *FindFreeVars(std::set<string> *b);
+      virtual Value *Codegen(map<string, Expr*> &);
+      virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
     };
@@ -154,13 +157,13 @@ namespace SPL {
       Expr* Body;
       Expr* Context;
       Purity Pureness;
-      llvm::Function *function;
+      Function *function;
 
     vector<AllocaInst*> *createArgAllocas();
 
     public:
       Func(const string &name,
-          const vector<std::pair<string,string*>*> &args,
+          const vector<pair<string,string*>*> &args,
           const string* retSType,
           Expr &body, Expr *context, Purity purity):
           Name(name), Body(&body), Context(context),
@@ -179,12 +182,12 @@ namespace SPL {
           Pureness(purity) {}
       string GetName() { return Name; }
       void setContext(Expr &context) { Context = &context; }
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
-      virtual std::set<string> *FindFreeVars(std::set<string> *b);
+      virtual Value *Codegen(map<string, Expr*> &);
+      virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
       string getName() { return Name; }
-      llvm::Function *getFunction();
+      Function *getFunction();
       vector<string> &getArgNames() { return Args; }
     };
 
@@ -196,8 +199,8 @@ namespace SPL {
       Closure(const string &name,
         const map<string, string> &record, Func *func):
         FuncName(name), ActivationRecord(record), FuncRef(func) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
-      virtual llvm::Type const *getType();
+      virtual Value *Codegen(map<string, Expr*> &);
+      virtual Type const *getType();
       virtual void RewriteBinding(string &OldName, string &NewName);
       Value *GenCallWith(
         vector<Value*> &args, map<string, Expr*> &NamedExprs);
@@ -208,7 +211,7 @@ namespace SPL {
       AllocaInst *Alloca;
     public:
       Register(AllocaInst *alloca): Alloca(alloca) {}
-      virtual llvm::Value *Codegen(map<string, Expr*> &);
+      virtual Value *Codegen(map<string, Expr*> &);
     };
 
     class SType {
@@ -220,7 +223,7 @@ namespace SPL {
       vector<string>  ElementSTypeNames;
       vector<SType>   ElementSTypes;
     public:
-      SStructType(string &name, const vector<std::pair<string,string*>*> &els)
+      SStructType(string &name, const vector<pair<string,string*>*> &els)
           : Name(name) {
         for (unsigned i=0, e=els.size(); i != e; ++i) {
           ElementNames.push_back(els[i]->first);
