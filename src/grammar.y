@@ -8,11 +8,14 @@ using namespace std;
 void yyerror(const char *error);
 int yylex();
 
-static std::vector<AST::Func*> toplevel;
+static std::vector<AST::Func*>      toplevel;
+static std::vector<AST::SType*>     types;
+static std::vector<AST::Class*>     classes;
+static std::vector<AST::Instance*>  instances;
 %}
 
 %locations
-%token IDENT NUMBER
+%token IDENT TIDENT NUMBER
 
 %union {
   AST::Expr *exp;
@@ -21,14 +24,22 @@ static std::vector<AST::Func*> toplevel;
   string *ident;
   vector<pair<string,string*>*> *args;
   vector<AST::Expr*> *callargs;
+  AST::SType *type;
+  AST::Class *cls;
+  AST::Instance *instance;
 }
 
 %type <exp>       exp
 %type <value>     NUMBER
 %type <ident>     IDENT
+%type <ident>     TIDENT
 %type <args>      args
 %type <callargs>  callargs
 %type <fun>       fun
+%type <type>      sstruct
+%type <type>      sunion
+%type <cls>       class
+%type <instance>  instance
 
 // TODO: add TK_
 %token DEF
@@ -39,6 +50,10 @@ static std::vector<AST::Func*> toplevel;
 %token IF
 %token THEN
 %token ELSE
+%token STRUCT
+%token UNION
+%token CLASS
+%token INSTANCE
 %token EQ "=="
 %token '='
 %token '('
@@ -50,12 +65,17 @@ static std::vector<AST::Func*> toplevel;
 %%
 
 top :
-    | fun top { toplevel.push_back($1); }
+    | fun top       { toplevel.push_back($1); }
+    | sstruct top   { types.push_back($1); }
+    | sunion top    { types.push_back($1); }
+    | class top     { classes.push_back($1); }
+    | instance top  { instances.push_back($1); }
 
 exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | exp '-' exp { $$ = new AST::Subtract(*$1, *$3); }
     | exp '*' exp { $$ = new AST::Multiply(*$1, *$3); }
     | exp ';' exp { $$ = new AST::Seq(*$1, *$3); }
+    | exp '.' exp { $$ = new AST::Member(*$1, *$3); }
     | exp EQ  exp { $$ = new AST::Eq(*$1, *$3); }
     | '{' exp '}' { $$ = $2; }
     | IDENT       { $$ = new AST::Variable(*$1); }
@@ -89,7 +109,7 @@ fun : DEF IDENT '(' args ')' '=' '{' exp '}' {
     }
 
 args  : {$$ = new vector<pair<string,string*>*>(); }
-      | IDENT ':' IDENT {
+      | IDENT ':' TIDENT {
         $$ = new vector<pair<string,string*>*>();
         $$->push_back(new pair<string,string*>(*$1, $3));
       }
@@ -97,7 +117,7 @@ args  : {$$ = new vector<pair<string,string*>*>(); }
         $$ = new vector<pair<string,string*>*>();
         $$->push_back(new pair<string,string*>(*$1, NULL));
       }
-      | args ',' IDENT ':' IDENT {
+      | args ',' IDENT ':' TIDENT {
         $1->push_back(new pair<string,string*>(*$3, $5));
         $$ = $1;
       }
@@ -110,6 +130,15 @@ callargs
       : { $$ = new std::vector<AST::Expr*>(); }
       | exp { $$ = new std::vector<AST::Expr*>(); $$->push_back($1); }
       | callargs ',' exp { $1->push_back($3); $$ = $1; }
+
+sstruct : STRUCT TIDENT '=' '{' args '}' {
+  $$ = new AST::SStructType(*$2, *$5);
+}
+sunion  : UNION  TIDENT '=' '{' args '}' { $$ = NULL; /* TODO */ }
+
+class : CLASS IDENT { $$ = NULL; /* TODO */ }
+
+instance : INSTANCE IDENT { $$ = NULL; /* TODO */ }
 
 %%
 
@@ -136,7 +165,7 @@ int main(int argc, const char* argv[])
     return ret;
 
   std::cout << "Parsed, " << toplevel.size() << " functions." << std::endl;
-  AST::File file(fileName, toplevel);
+  AST::File file(fileName, toplevel, types);
 
   file.run();
 
@@ -165,6 +194,7 @@ bool isaspecial(int ch) {
     case '`':
     case '[':
     case ']':
+    case '.':
     case '+': // TODO: remove these special cases, treat as identifiers
     case '-':
     case '*':
@@ -212,9 +242,16 @@ int yylex() {
   if (StrVal == "if")   return IF;
   if (StrVal == "then") return THEN;
   if (StrVal == "else") return ELSE;
+  if (StrVal == "struct") return STRUCT;
+  if (StrVal == "union") return UNION;
+  if (StrVal == "class") return CLASS;
+  if (StrVal == "instance") return INSTANCE;
   if (StrVal == "==") return EQ;
   if (StrVal == "=") return '=';
 
   yylval.ident = new std::string(StrVal);
-  return IDENT;
+  if (StrVal[0] >= 'A' && StrVal[0] <= 'Z')
+    return TIDENT;
+  else
+    return IDENT;
 }

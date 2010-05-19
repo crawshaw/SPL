@@ -43,6 +43,7 @@ Type const *BinaryOp::getType() { return RHS->getType(); }
 Type const *Eq::getType() { return Type::getInt1Ty(getGlobalContext()); }
 Type const *Bind::getType() { return Body->getType(); }
 Type const *If::getType() { return Then->getType(); }
+Type const *Member::getType() { return NULL; /* TODO */ }
 
 
 Value *Number::Codegen(map<string, Expr*> &NamedExprs) {
@@ -79,6 +80,10 @@ Value *Eq::Codegen(map<string, Expr*> &NamedExprs) {
 }
 
 Value *Seq::Codegen(map<string, Expr*> &NamedExprs) {
+  return NULL;
+}
+
+Value *Member::Codegen(map<string, Expr*> &NamedExprs) {
   return NULL;
 }
 

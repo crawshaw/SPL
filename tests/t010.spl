@@ -1,0 +1,8 @@
+
+struct Point = {
+  x : Double,
+  y : Double
+}
+
+def f(pt: Point) = { pt.x + pt.y }
+

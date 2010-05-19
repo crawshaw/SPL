@@ -11,6 +11,7 @@ namespace SPL {
   namespace AST {
     using llvm::AllocaInst;
     using llvm::Value;
+    using llvm::Type;
     using std::map;
     using std::vector;
     using std::string;
@@ -97,6 +98,14 @@ namespace SPL {
     public:
       Seq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
       virtual llvm::Value *Codegen(map<string, Expr*> &);
+    };
+
+    class Member : public BinaryOp {
+      // TODO: AllocaInst *Struct;
+    public:
+      Member(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+      virtual Value *Codegen(map<string, Expr*> &);
+      virtual Type const *getType();
     };
 
     class Bind: public Expr {
@@ -202,16 +211,40 @@ namespace SPL {
       virtual llvm::Value *Codegen(map<string, Expr*> &);
     };
 
+    class SType {
+    };
+
+    class SStructType : public SType {
+      string Name;
+      vector<string>  ElementNames;
+      vector<string>  ElementSTypeNames;
+      vector<SType>   ElementSTypes;
+    public:
+      SStructType(string &name, const vector<std::pair<string,string*>*> &els)
+          : Name(name) {
+        for (unsigned i=0, e=els.size(); i != e; ++i) {
+          ElementNames.push_back(els[i]->first);
+          ElementSTypeNames.push_back(*els[i]->second);
+        }
+      }
+    };
+
+    class SUnionType  : public SType {
+    };
+
+    class Class;
+    class Instance;
+
     class File {
       string Name;
       vector<Func*> Funcs;
+      vector<SType*> STypes;
     public:
-      File(string &name, const vector<Func*> &funcs)
-        : Name(name), Funcs(funcs) {}
+      File(string &name, const vector<Func*> &funcs, const vector<SType*> &tys)
+        : Name(name), Funcs(funcs), STypes(tys) {}
       void LambdaLiftFuncs();
       void run();
     };
-
   };
 
   namespace Parser {
