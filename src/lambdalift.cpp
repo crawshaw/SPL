@@ -1,3 +1,28 @@
+/*
+io main() = {
+  val pt = Point(x = 0.5, y = 0.8);
+  f(pt)
+}
+
+// t011.spl:
+
+class ToString[T] = {
+  def toString(T): String
+}
+
+instance ToString[Point] = {
+  def toString(pt) = { "Point(" ++ pt.x ++ ", " ++ pt.y ++ ")" }
+}
+
+class FromString[T] = {
+  fromString(String): T
+}
+
+class Eq[T] = {
+  ==(T, T): Boolean
+}
+*/
+
 #include "ast.h"
 #include <iostream>
 
@@ -31,7 +56,7 @@ Expr* BinaryOp::LambdaLift(vector<Func*> &newFuncs) {
   return this;
 }
 
-Expr* Bind::LambdaLift(vector<Func*> &newFuncs) {
+Expr* Binding::LambdaLift(vector<Func*> &newFuncs) {
   Body = Body->LambdaLift(newFuncs);
   return this;
 }
@@ -77,7 +102,7 @@ Expr* Func::LambdaLift(vector<Func*> &newFuncs) {
     Closure *closure = new Closure(newName, activationRecord, newFunc);
     newFuncs.push_back(newFunc);
 
-    return new Bind(Name, *closure, *Context);
+    return new Binding(Name, *closure, *Context);
   }
 }
 
@@ -100,7 +125,7 @@ void BinaryOp::RewriteBinding(string &OldName, string &NewName) {
   RHS->RewriteBinding(OldName, NewName);
 }
 
-void Bind::RewriteBinding(string &OldName, string &NewName) {
+void Binding::RewriteBinding(string &OldName, string &NewName) {
   Init->RewriteBinding(OldName, NewName);
   if (OldName != Name) {
     // Only rewrite if this Bind is not shadowing the definition.
@@ -165,7 +190,7 @@ set<string> *BinaryOp::FindFreeVars(set<string> *bindings) {
   return v1;
 }
 
-set<string> *Bind::FindFreeVars(set<string> *bindings) {
+set<string> *Binding::FindFreeVars(set<string> *bindings) {
   set<string> *v1 = Init->FindFreeVars(bindings);
   set<string> *newB = new set<string>();
   newB->insert(bindings->begin(), bindings->end());

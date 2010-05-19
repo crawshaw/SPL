@@ -81,7 +81,7 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | IDENT       { $$ = new AST::Variable(*$1); }
     | NUMBER      { $$ = new AST::Number($1); }
     | IF exp THEN exp ELSE exp  { $$ = new AST::If(*$2, *$4, *$6); }
-    | TK_VAL IDENT '=' exp ';' exp { $$ = new AST::Bind(*$2, *$4, *$6); }
+    | TK_VAL IDENT '=' exp ';' exp { $$ = new AST::Binding(*$2, *$4, *$6); }
     | IDENT '(' callargs ')' { $$ = new AST::Call(*$1, *$3); }
     | fun ';' exp {
       $1->setContext(*$3);
