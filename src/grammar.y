@@ -243,6 +243,25 @@ int yylex() {
     return NUMBER;
   }
 
+  // Skip multi-line comments.
+  if (LastChar == '/' && codein->peek() == '*') {
+    codeinget();
+    while (!(codeinget() == '*' && codein->peek() == '/')) {
+      ;
+    }
+    codeinget();
+    return yylex();
+  }
+
+  // Skip single-line comments.
+  if (LastChar == '/' && codein->peek() == '/') {
+    codeinget();
+    while (codeinget() != '\n') {
+      ;
+    }
+    return yylex();
+  }
+
   if (LastChar == EOF)
     return -1;
 

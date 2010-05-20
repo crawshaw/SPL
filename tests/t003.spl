@@ -1,5 +1,7 @@
+/* foo bar */
 
 io main() = {
+  // single-line comment
   def g() = { 5 };
   7 + g()
 }
