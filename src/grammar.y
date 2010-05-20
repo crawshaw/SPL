@@ -144,6 +144,8 @@ instance : INSTANCE IDENT { $$ = NULL; /* TODO */ }
 %%
 
 static std::istream *codein;
+static int line;
+static int col;
 
 void usage() {
   std::cerr << "usage: spl <filename>" << std::endl;
@@ -160,6 +162,8 @@ int main(int argc, const char* argv[])
   if (!infile.is_open())
     usage();
   codein = &infile;
+  line = 1;
+  col = 0;
 
   int ret = yyparse();
   if (ret)
@@ -205,17 +209,33 @@ bool isaspecial(int ch) {
   }
 }
 
+int codeinget() {
+  int next = codein->get();
+  if (next == '\n') {
+    line++;
+    col = 0;
+  } else {
+    col++;
+  }
+  return next;
+}
+
 int yylex() {
-  int LastChar = codein->get();
+  int LastChar = codeinget();
 
   while (isspace(LastChar))
-    LastChar = codein->get();
+    LastChar = codeinget();
+
+  yylloc.first_line = line;
+  yylloc.first_column = col;
 
   if (isdigit(LastChar)) {
     std::string num;
     num += LastChar;
     while (isdigit(codein->peek()))
-      num += codein->get();
+      num += codeinget();
+    yylloc.last_line = line;
+    yylloc.last_column = col;
 
     int NumVal;
     SPL::Util::from_string<int>(NumVal, num, std::dec);
@@ -233,7 +253,9 @@ int yylex() {
   std::string StrVal = "";
   StrVal += LastChar;
   while (!isspace(codein->peek()) && !isaspecial(codein->peek()))
-    StrVal += codein->get();
+    StrVal += codeinget();
+  yylloc.last_line = line;
+  yylloc.last_column = col;
 
   if (StrVal == "def") return DEF;
   if (StrVal == "io")  return IO;
