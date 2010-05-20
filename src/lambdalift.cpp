@@ -1,28 +1,3 @@
-/*
-io main() = {
-  val pt = Point(x = 0.5, y = 0.8);
-  f(pt)
-}
-
-// t011.spl:
-
-class ToString[T] = {
-  def toString(T): String
-}
-
-instance ToString[Point] = {
-  def toString(pt) = { "Point(" ++ pt.x ++ ", " ++ pt.y ++ ")" }
-}
-
-class FromString[T] = {
-  fromString(String): T
-}
-
-class Eq[T] = {
-  ==(T, T): Boolean
-}
-*/
-
 #include "ast.h"
 #include <iostream>
 
