@@ -1,8 +1,13 @@
 
 struct Point = {
-  x : Double,
-  y : Double
+  x : Int32,
+  y : Int32
 }
 
 def f(pt: Point) = { pt.x + pt.y }
+
+io main() = {
+  val pt = Point(5, 8);
+  f(pt)
+}
 

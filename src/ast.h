@@ -201,7 +201,7 @@ namespace SPL {
           const string* retSType,
           Expr &body, Expr *context, Purity purity):
           Name(name), Body(&body), Context(context),
-          RetSType(retSType), Pureness(purity) {
+          RetSType(retSType), function(NULL), Pureness(purity) {
         for (unsigned i=0, e=args.size(); i != e; ++i) {
           Args.push_back(args[i]->first);
           ArgSTypes.push_back(args[i]->second);
@@ -213,8 +213,9 @@ namespace SPL {
           Expr &body, Expr *context, Purity purity):
           Name(name), Args(args), ArgSTypes(argSTypes),
           Body(&body), Context(context),
+          function(NULL),
           Pureness(purity) {}
-      string GetName() { return Name; }
+      const string GetName() { return Name; }
       void setContext(Expr &context) { Context = &context; }
       virtual void Bind(map<string, Expr*> &);
       virtual Value *Codegen();
@@ -240,6 +241,20 @@ namespace SPL {
       virtual Type const *getType();
       virtual void RewriteBinding(string &OldName, string &NewName);
       Value *GenCallWith(vector<Value*> &args);
+    };
+
+    class SType;
+    class SStructType;
+
+    class Constructor : public Expr {
+      const string STypeName;
+      SStructType *SType;
+      vector<Expr*> Args;
+    public:
+      Constructor(const string &stName, const vector<Expr*> &args)
+        : STypeName(stName), Args(args), SType(NULL) {}
+      virtual void Bind(map<string, Expr*> &);
+      virtual Value *Codegen();
     };
 
     class SType {

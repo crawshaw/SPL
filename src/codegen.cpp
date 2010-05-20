@@ -106,6 +106,16 @@ Value *Member::Codegen() {
   return NULL;
 }
 
+void Constructor::Bind(map<string, Expr*> &NamedExprs) {
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    Args[i]->Bind(NamedExprs);
+}
+
+Value *Constructor::Codegen() {
+  // TODO: something interesting, do a heap allocation.
+  return NULL;
+}
+
 Value *Register::Codegen() {
   if (Alloca == NULL) {
     Value *InitVal = Source->Codegen();
@@ -228,24 +238,8 @@ Value *Closure::Codegen() {
   return FuncRef->getFunction();
 }
 
-vector<AllocaInst*> *Func::createArgAllocas() {
-  vector<AllocaInst*> *argAllocas = new vector<AllocaInst*>();
-
-  Function::arg_iterator ai = function->arg_begin();
-  for (unsigned idx=0, e = Args.size(); idx != e; ++idx, ++ai) {
-    IRBuilder<> TmpB(&function->getEntryBlock(),
-      function->getEntryBlock().begin());
-    AllocaInst *alloca = TmpB.CreateAlloca(
-      Type::getInt32Ty(getGlobalContext()), 0, Args[idx].c_str());
-    Builder.CreateStore(ai, alloca);
-    argAllocas->push_back(alloca);
-  }
-
-  return argAllocas;
-}
-
 Function *Func::getFunction() {
-  if (function)
+  if (function != NULL)
     return function;
 
   vector<const Type*> ArgTypes(Args.size(),
@@ -318,18 +312,23 @@ Value *Func::Codegen() {
 }
 
 void File::run() {
+  InitializeNativeTarget();
   std::cout << "tag 1" << std::endl;
   string errStr;
   Module module("my module", getGlobalContext());
   TheModule = &module;
   TheExecutionEngine = EngineBuilder(TheModule).setErrorStr(&errStr).create();
+  if (!TheExecutionEngine) {
+    std::cerr << "ExecutionEngine: " << errStr << std::endl;
+    exit(1);
+  }
   FunctionPassManager fpm(TheModule);
   std::cout << "tag 2" << std::endl;
   TheFPM = &fpm;
 
+  fpm.add(new TargetData(*TheExecutionEngine->getTargetData()));
   fpm.doInitialization();
   /*
-  fpm.add(new TargetData(*TheExecutionEngine->getTargetData()));
   std::cout << "tag 3" << std::endl;
   fpm.add(createPromoteMemoryToRegisterPass());
   fpm.add(createInstructionCombiningPass());
@@ -346,9 +345,11 @@ void File::run() {
 
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
     NamedExprs[(*i)->getName()] = *i;
+  std::cout << "tag 5b" << std::endl;
 
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
     (*i)->Bind(NamedExprs);
+  std::cout << "tag 5c" << std::endl;
 
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
     (*i)->Codegen();
@@ -357,6 +358,19 @@ void File::run() {
 
   TheModule->dump();
   std::cout << "tag 7" << std::endl;
+
+  Function *f = module.getFunction("main");
+  if (f == NULL) {
+    std::cout << "main is not defined!" << std::endl;
+  }
+
+  void *fptr = TheExecutionEngine->getPointerToFunction(f);
+  std::cout << "tag 7a" << std::endl;
+  int32_t (*fp)() = (int32_t (*)())(intptr_t)fptr;
+
+  std::cout << "Result: " << fp() << std::endl;
+
+  std::cout << "tag 8" << std::endl;
 }
 
 }; };

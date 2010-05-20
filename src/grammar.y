@@ -83,6 +83,7 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | IF exp THEN exp ELSE exp  { $$ = new AST::If(*$2, *$4, *$6); }
     | TK_VAL IDENT '=' exp ';' exp { $$ = new AST::Binding(*$2, *$4, *$6); }
     | IDENT '(' callargs ')' { $$ = new AST::Call(*$1, *$3); }
+    | TIDENT '(' callargs ')' { $$ = new AST::Constructor(*$1, *$3); }
     | fun ';' exp {
       $1->setContext(*$3);
       AST::Expr* expr = $1;
