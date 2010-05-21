@@ -68,7 +68,8 @@ Expr* Func::LambdaLift(vector<Func*> &newFuncs) {
     Body->RewriteBinding(Name, newName);
     Context->RewriteBinding(Name, newName);
     Context->LambdaLift(newFuncs);
-    Func *newFunc = new Func(newName,newArgs, ArgSTypes, *Body, NULL, Pureness);
+    Func *newFunc = new Func(
+      newName, newArgs, ArgSTypeNames, *Body, NULL, Pureness);
 
     map<string, string> activationRecord;
     set<string>::const_iterator it;

@@ -28,30 +28,266 @@ static Module *TheModule;
 static FunctionPassManager *TheFPM;
 static ExecutionEngine *TheExecutionEngine;
 
-Type const *Expr::getType() {
-  return Type::getInt32Ty(getGlobalContext());
+// TODO: pass to Bind() along with NamedExprs.
+static map<string,SType*> NamedTypes;
+
+
+/////////////////////////////////////////////////////////////////////
+
+
+Type const *Expr::getType() { return ThisType->getType(); }
+
+Type const* Int8 ::getType() { return Type::getInt8Ty( getGlobalContext()); }
+Type const* Int16::getType() { return Type::getInt16Ty(getGlobalContext()); }
+Type const* Int32::getType() { return Type::getInt32Ty(getGlobalContext()); }
+Type const* Int64::getType() { return Type::getInt64Ty(getGlobalContext()); }
+Type const* SStructType::getType() { return ThisType; }
+void SStructType::Bind(map<string, SType*> &NamedTypes) {
+  for (unsigned i=0, e=ElementSTypeNames.size(); i != e; ++i)
+    ElementSTypes.push_back(NamedTypes[ElementSTypeNames[i]]);
+  vector<const Type *> tys;
+  for (unsigned i=0, e=ElementSTypes.size(); i != e; ++i)
+    tys.push_back(ElementSTypes[i]->getType());
+  ThisType = StructType::get(getGlobalContext(), tys);
 }
-Type const *Closure::getType() {
-  std::cout << "closure tag 1" << std::endl;
-  const FunctionType *ft = FuncRef->getFunction()->getFunctionType();
-  std::cout << "closure tag 2" << std::endl;
-  return PointerType::getUnqual(ft);
+Type const *SStructType::getPassType() {
+  return PointerType::getUnqual(getType());
+}
+FunctionType const *SFunctionType::getFunctionType() {
+  vector<const Type*> ArgTypes;
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    ArgTypes.push_back(Args[i]->getType());
+  return FunctionType::get(Ret->getPassType(), ArgTypes, false);
+}
+Type const *SFunctionType::getType() { return getFunctionType(); }
+Type const *SPtr::getType() { return PointerType::getUnqual(Ref->getType()); }
+Type const *SBool::getType() { return Type::getInt1Ty(getGlobalContext()); }
+
+
+/////////////////////////////////////////////////////////////////////
+
+
+void Number::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  tys[this] = new Int32();
+}
+void Variable::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  eqns.insert(pair<Expr*,Expr*>(this, Binding));
+}
+void UnaryOp::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  eqns.insert(pair<Expr*,Expr*>(this, SubExpr));
+  SubExpr->TypeInfer(eqns, tys);
+}
+void BinaryOp::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  eqns.insert(pair<Expr*,Expr*>(this, LHS));
+  eqns.insert(pair<Expr*,Expr*>(this, RHS));
+  LHS->TypeInfer(eqns, tys);
+  RHS->TypeInfer(eqns, tys);
+}
+void Eq::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  tys[this] = new SBool();
+  LHS->TypeInfer(eqns, tys);
+  RHS->TypeInfer(eqns, tys);
+}
+void Seq::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  eqns.insert(pair<Expr*,Expr*>(this,RHS));
+  LHS->TypeInfer(eqns, tys);
+  RHS->TypeInfer(eqns, tys);
+}
+void Member::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  // TODO
+}
+void Binding::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  Init->TypeInfer(eqns, tys);
+  Body->TypeInfer(eqns, tys);
+}
+void If::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  Cond->TypeInfer(eqns, tys);
+  Then->TypeInfer(eqns, tys);
+  Else->TypeInfer(eqns, tys);
+  tys[Cond] = new SBool();
+  eqns.insert(pair<Expr*,Expr*>(this,Then));
+  eqns.insert(pair<Expr*,Expr*>(this,Else));
+}
+void Call::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  eqns.insert(pair<Expr*,Expr*>(this,Callee));
+
+  // Match each Arg to the associate Func register.
+  vector<RegisterFunArg*> argRegs;
+  if (Closure *cl = dynamic_cast<Closure*>(Callee)) {
+    cl->getArgRegs(argRegs);
+  } else if (Func *fn = dynamic_cast<Func*>(Callee)) {
+    fn->getArgRegs(argRegs);
+  } else {
+    std::cerr << "Call to " << CalleeName << " is not function nor closure."
+      << std::endl;
+    exit(1);
+  }
+
+  assert(argRegs.size() == Args.size());
+  for (unsigned i=0, e=Args.size(); i != e; ++i) {
+    eqns.insert(pair<Expr*,Expr*>(Args[i], argRegs[i]));
+    Args[i]->TypeInfer(eqns, tys);
+  }
+}
+void Register::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  eqns.insert(pair<Expr*,Expr*>(this,Source));
+}
+void Func::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  eqns.insert(pair<Expr*,Expr*>(this,Body));
+  Body->TypeInfer(eqns, tys);
+}
+void Closure::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
+  eqns.insert(pair<Expr*,Expr*>(this,FuncRef));
+  vector<RegisterFunArg*> argRegs;
+  FuncRef->getArgRegs(argRegs);
+
+  unsigned idx = 0;
+  map<string,Expr*>::const_iterator it;
+  for (it=ActivationRecord.begin(); it!=ActivationRecord.end(); ++it, ++idx)
+    eqns.insert(pair<Expr*,Expr*>((*it).second, argRegs[idx]));
+}
+void Constructor::TypeInfer(multimap<Expr*,Expr*>&eqns, map<Expr*,SType*> &tys){
+  SType *ty = NamedTypes[STypeName];
+  if (ty == NULL) {
+    std::cerr << "Unknown type: " << STypeName << std::endl;
+    exit(1);
+  }
+  tys[this] = ty;
 }
 
-Type const *Number::getType() { return Type::getInt32Ty(getGlobalContext()); }
-Type const *BinaryOp::getType() { return RHS->getType(); }
-Type const *Eq::getType() { return Type::getInt1Ty(getGlobalContext()); }
-Type const *Binding::getType() { return Body->getType(); }
-Type const *If::getType() { return Then->getType(); }
-Type const *Member::getType() { return NULL; /* TODO */ }
+
+/////////////////////////////////////////////////////////////////////
 
 
-Value *Number::Codegen() {
-  return ConstantInt::get(getGlobalContext(), APInt(32, Val, true));
+void Number::Bind(map<string, Expr*> &) {
+  ThisType = new Int32();
 }
 
 void Variable::Bind(map<string, Expr*> &NamedExprs) {
   Binding = NamedExprs[Name];
+  if (Binding) {
+    ThisType = Binding->getSType();
+  } else {
+    std::cerr << "Failed to bind " << Name << std::endl;
+  }
+}
+
+void UnaryOp::Bind(map<string, Expr*> &NamedExprs) {
+  SubExpr->Bind(NamedExprs);
+  ThisType = SubExpr->getSType();
+}
+
+void BinaryOp::Bind(map<string, Expr*> &NamedExprs) {
+  LHS->Bind(NamedExprs);
+  RHS->Bind(NamedExprs);
+  ThisType = RHS->getSType();
+}
+
+void Eq::Bind(map<string, Expr*> &NamedExprs) {
+  LHS->Bind(NamedExprs);
+  RHS->Bind(NamedExprs);
+  ThisType = new SBool();
+}
+
+void Member::Bind(map<string, Expr*> &NamedExprs) {
+  // TODO
+  LHS->Bind(NamedExprs);
+  RHS->Bind(NamedExprs);
+  std::cerr << "Member::Bind not yet implemented!" << std::endl;
+  // TODO setSType(RHS->getSType());
+}
+
+void Constructor::Bind(map<string, Expr*> &NamedExprs) {
+  if (SStructType *st = dynamic_cast<SStructType*>(NamedTypes[STypeName])) {
+    ThisType = st;
+  } else {
+    std::cerr << "No type matching constructor: " << STypeName << std::endl;
+  }
+
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    Args[i]->Bind(NamedExprs);
+}
+
+void Binding::Bind(map<string, Expr*> &NamedExprs) {
+  Init->Bind(NamedExprs);
+
+  Expr *OldExpr = NamedExprs[Name];
+  Expr *reg = new Register(Name, Init, Init->getSType());
+  reg->Bind(NamedExprs);
+  NamedExprs[Name] = reg;
+
+  Body->Bind(NamedExprs);
+
+  NamedExprs[Name] = OldExpr;
+
+  ThisType = Body->getSType();
+}
+
+void If::Bind(map<string, Expr*> &NamedExprs) {
+  Cond->Bind(NamedExprs);
+  Then->Bind(NamedExprs);
+  Else->Bind(NamedExprs);
+  ThisType = Then->getSType();
+}
+
+void Closure::Bind(map<string,Expr*> &NamedExprs) {
+  map<string,string>::const_iterator it;
+  for (it=ActivationRecordNames.begin(); it!=ActivationRecordNames.end(); ++it)
+    ActivationRecord[(*it).first] =
+      NamedExprs[ActivationRecordNames[(*it).second]];
+}
+
+void Call::Bind(map<string, Expr*> &NamedExprs) {
+  Callee = NamedExprs[CalleeName];
+
+  if (Callee == NULL) {
+    std::cerr << "Cannot find function `" << CalleeName << "'" << std::endl;
+    exit(1);
+  }
+
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    Args[i]->Bind(NamedExprs);
+}
+
+void Func::Bind(map<string, Expr*> &NamedExprs) {
+  // Resolve return type. TODO remove Int32 hack, add type resolution phase.
+  std::string int32("Int32");
+  RetSType = NamedTypes[RetSTypeName == NULL ? int32 : *RetSTypeName];
+  //std::cerr << "Function " << Name << " return type: ";
+  //RetSType->getType()->dump();
+  //std::cerr << std::endl;
+
+  // Resolve argument types.
+  for (unsigned i=0, e=Args.size(); i != e; ++i) {
+    // TODO: remove, add type resolution phase.
+    SType *ty = NamedTypes[ArgSTypeNames[i]==NULL ? int32 : *ArgSTypeNames[i]];
+    ArgSTypes.push_back(ty);
+  }
+
+  ThisType = new SFunctionType(Name, ArgSTypes, RetSType);
+
+  // Bind body.
+  vector<Expr*> oldBindings;
+  for (unsigned i=0, e=Args.size(); i != e; ++i) {
+    RegisterFunArg *reg = new RegisterFunArg(ArgSTypes[i]);
+    ArgRegs.push_back(reg);
+    oldBindings.push_back(
+      NamedExprs.count(Args[i]) == 0 ? NULL : NamedExprs[Args[i]]);
+    NamedExprs[Args[i]] = reg;
+  }
+
+  Body->Bind(NamedExprs);
+
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    NamedExprs[Args[i]] = oldBindings[i];
+}
+
+
+/////////////////////////////////////////////////////////////////////
+
+
+Value *Number::Codegen() {
+  return ConstantInt::get(getGlobalContext(), APInt(32, Val, true));
 }
 
 Value *Variable::Codegen() {
@@ -63,19 +299,9 @@ Value *Variable::Codegen() {
   return Builder.CreateLoad(V, Name.c_str());
 }
 
-void UnaryOp::Bind(map<string, Expr*> &NamedExprs) {
-  SubExpr->Bind(NamedExprs);
-}
-
 Value *Not::Codegen() {
   return NULL;
 }
-
-void BinaryOp::Bind(map<string, Expr*> &NamedExprs) {
-  LHS->Bind(NamedExprs);
-  RHS->Bind(NamedExprs);
-}
-
 Value *Add::Codegen() {
   return Builder.CreateAdd(LHS->Codegen(), RHS->Codegen(), "addtmp");
 }
@@ -96,24 +322,24 @@ Value *Seq::Codegen() {
   return NULL;
 }
 
-void Member::Bind(map<string, Expr*> &NamedExprs) {
-  // TODO
-  LHS->Bind(NamedExprs);
-  RHS->Bind(NamedExprs);
-}
-
 Value *Member::Codegen() {
   return NULL;
 }
 
-void Constructor::Bind(map<string, Expr*> &NamedExprs) {
-  for (unsigned i=0, e=Args.size(); i != e; ++i)
-    Args[i]->Bind(NamedExprs);
-}
-
 Value *Constructor::Codegen() {
-  // TODO: something interesting, do a heap allocation.
-  return NULL;
+  // TODO: heap allocation.
+  Function *TheFunction = Builder.GetInsertBlock()->getParent();
+  IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
+    TheFunction->getEntryBlock().begin());
+  AllocaInst *a = TmpB.CreateAlloca(ThisType->getType(), 0, STypeName.c_str());
+
+  for (unsigned i=0, e=Args.size(); i != e; ++i) {
+    Value *gep = TmpB.CreateStructGEP(a, i);
+    Value *val = Args[i]->Codegen();
+    Builder.CreateStore(val, gep);
+  }
+
+  return a;
 }
 
 Value *Register::Codegen() {
@@ -135,26 +361,8 @@ Value *RegisterFunArg::Codegen() {
   return Alloca;
 }
 
-void Binding::Bind(map<string, Expr*> &NamedExprs) {
-  Init->Bind(NamedExprs);
-
-  Expr *OldExpr = NamedExprs[Name];
-  Expr *reg = new Register(Name, Init);
-  NamedExprs[Name] = reg;
-
-  Body->Bind(NamedExprs);
-
-  NamedExprs[Name] = OldExpr;
-}
-
 Value *Binding::Codegen() {
   return Body->Codegen();
-}
-
-void If::Bind(map<string, Expr*> &NamedExprs) {
-  Cond->Bind(NamedExprs);
-  Then->Bind(NamedExprs);
-  Else->Bind(NamedExprs);
 }
 
 Value *If::Codegen() {
@@ -196,12 +404,13 @@ Value *If::Codegen() {
   return pn;
 }
 
-void Closure::Bind(map<string,Expr*> &NamedExprs) {
-  vector<string> args = FuncRef->getArgNames();
-  for (unsigned i=0, e=args.size(); i != e; ++i)
-    ActivationRecord[args[i]] = NamedExprs[ActivationRecordNames[args[i]]];
+void Closure::getArgRegs(vector<RegisterFunArg*> &args) {
+  vector<RegisterFunArg*> funArgRegs;
+  FuncRef->getArgRegs(funArgRegs);
+  args.assign(funArgRegs.begin() + ActivationRecord.size(), funArgRegs.end());
 }
 
+// Can only be called after Bind phase.
 Value *Closure::GenCallWith(vector<Value*> &argVals) {
   vector<Value*> args;
   vector<string> argNames = FuncRef->getArgNames();
@@ -214,8 +423,19 @@ Value *Closure::GenCallWith(vector<Value*> &argVals) {
     FuncRef->getFunction(), args.begin(), args.end(), "calltmp");
 }
 
-void Call::Bind(map<string, Expr*> &NamedExprs) {
-  Callee = NamedExprs[CalleeName];
+SType *Call::getSType() {
+  if (ThisType == NULL) {
+    if (Closure *cl = dynamic_cast<Closure*>(Callee)) {
+      ThisType = cl->getFunction()->getFunctionSType()->getReturnType();
+    } else if (Func *fn = dynamic_cast<Func*>(Callee)) {
+      ThisType = fn->getFunctionSType()->getReturnType();
+    } else {
+      std::cerr << "Call to " << CalleeName << " is not function nor closure."
+        << std::endl;
+      exit(1);
+    }
+  }
+  return ThisType;
 }
 
 Value *Call::Codegen() {
@@ -223,6 +443,7 @@ Value *Call::Codegen() {
   for (unsigned i=0, e=Args.size(); i != e; ++i)
     argVals.push_back(Args[i]->Codegen());
 
+  // XXX: too much dynamic_cast, how about two subclasses of Call?
   if (Closure *cl = dynamic_cast<Closure*>(Callee)) {
     return cl->GenCallWith(argVals);
   } else if (Func *fn = dynamic_cast<Func*>(Callee)) {
@@ -238,18 +459,19 @@ Value *Closure::Codegen() {
   return FuncRef->getFunction();
 }
 
+// Can only be called after Bind phase.
 Function *Func::getFunction() {
   if (function != NULL)
     return function;
 
-  vector<const Type*> ArgTypes(Args.size(),
-    Type::getInt32Ty(getGlobalContext()));
-  FunctionType *ft = FunctionType::get(Type::getInt32Ty(
-    getGlobalContext()), ArgTypes, false);
+  FunctionType const *ft = ThisType->getFunctionType();
+  //std::cerr << "FunctionType " << Name << " type: ";
+  //ft->dump();
+  //std::cerr << std::endl;
+
   function = Function::Create(ft, Function::ExternalLinkage, Name, TheModule);
 
   if (function->getName() != Name) {
-    // Terrible conflict
     std::cout << "Function redeclaration" << std::endl;
     return 0;
   }
@@ -262,25 +484,10 @@ Function *Func::getFunction() {
   return function;
 }
 
-void Func::Bind(map<string, Expr*> &NamedExprs) {
-  vector<Expr*> oldBindings;
-
-  for (unsigned i=0, e=Args.size(); i != e; ++i) {
-    RegisterFunArg *reg = new RegisterFunArg();
-    ArgRegs.push_back(reg);
-    oldBindings.push_back(
-      NamedExprs.count(Args[i]) == 0 ? NULL : NamedExprs[Args[i]]);
-    NamedExprs[Args[i]] = reg;
-  }
-
-  Body->Bind(NamedExprs);
-
-  for (unsigned i=0, e=Args.size(); i != e; ++i)
-    NamedExprs[Args[i]] = oldBindings[i];
-}
 
 Value *Func::Codegen() {
   Function *function = getFunction();
+  std::cerr << "Generating code for " << Name <<std::endl;
 
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(getGlobalContext(), "entry", function);
@@ -292,7 +499,7 @@ Value *Func::Codegen() {
     IRBuilder<> TmpB(&function->getEntryBlock(),
       function->getEntryBlock().begin());
     AllocaInst *alloca = TmpB.CreateAlloca(
-      Type::getInt32Ty(getGlobalContext()), 0, Args[idx].c_str());
+      ArgSTypes[idx]->getType(), 0, Args[idx].c_str());
     Builder.CreateStore(ai, alloca);
     ArgRegs[idx]->setAlloca(alloca);
   }
@@ -301,10 +508,12 @@ Value *Func::Codegen() {
 
   if (ret == NULL) {
     function->eraseFromParent();
+    std::cerr << "Empty function: " << Name << std::endl;
     return NULL;
   }
 
   Builder.CreateRet(ret);
+  //function->dump();
   verifyFunction(*function);
   // TODO: TheFPM->run(*function);
 
@@ -341,16 +550,35 @@ void File::run() {
   LambdaLiftFuncs();
   std::cout << "tag 5" << std::endl;
 
-  map<string, Expr*> NamedExprs;
+  // Load built-in types into type scope.
+  // NamedTypes["Bool"] = TODO
+  NamedTypes["Int8"]  = new Int8();
+  NamedTypes["Int16"] = new Int16();
+  NamedTypes["Int32"] = new Int32();
+  NamedTypes["Int64"] = new Int64();
 
+  // Bind and load top-level type definitions into the type scope.
+  for (vector<SType*>::const_iterator i=STypes.begin(); i!=STypes.end(); i++) {
+    (*i)->Bind(NamedTypes);
+    // TODO check for overloading primitive NamedTypes.count((*i)->getName())
+    NamedTypes[(*i)->getName()] = *i;
+  }
+
+  // Load top-level function names into binding scope.
+  map<string, Expr*> NamedExprs;
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
     NamedExprs[(*i)->getName()] = *i;
+
   std::cout << "tag 5b" << std::endl;
 
+  // Bind all functions.
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
     (*i)->Bind(NamedExprs);
+
   std::cout << "tag 5c" << std::endl;
 
+  // Generate LLVM IR for each top-level function.
+  // TODO: pass in the LLVM state as an argument.
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
     (*i)->Codegen();
 
@@ -359,15 +587,13 @@ void File::run() {
   TheModule->dump();
   std::cout << "tag 7" << std::endl;
 
+  // Execute the function `main'.
   Function *f = module.getFunction("main");
   if (f == NULL) {
     std::cout << "main is not defined!" << std::endl;
   }
-
   void *fptr = TheExecutionEngine->getPointerToFunction(f);
-  std::cout << "tag 7a" << std::endl;
   int32_t (*fp)() = (int32_t (*)())(intptr_t)fptr;
-
   std::cout << "Result: " << fp() << std::endl;
 
   std::cout << "tag 8" << std::endl;

@@ -93,19 +93,19 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
 fun : DEF IDENT '(' args ')' '=' '{' exp '}' {
       $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::Pure);
     }
-    | DEF IDENT '(' args ')' ':' IDENT '=' '{' exp '}' {
+    | DEF IDENT '(' args ')' ':' TIDENT '=' '{' exp '}' {
       $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::Pure);
     }
     | IO IDENT '(' args ')' '=' '{' exp '}' {
       $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::FunIO);
     }
-    | IO IDENT '(' args ')' ':' IDENT '=' '{' exp '}' {
+    | IO IDENT '(' args ')' ':' TIDENT '=' '{' exp '}' {
       $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::FunIO);
     }
     | IMP IDENT '(' args ')' '=' '{' exp '}' {
       $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::Impure);
     }
-    | IMP IDENT '(' args ')' ':' IDENT '=' '{' exp '}' {
+    | IMP IDENT '(' args ')' ':' TIDENT '=' '{' exp '}' {
       $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::Impure);
     }
 
