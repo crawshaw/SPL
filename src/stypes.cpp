@@ -52,9 +52,28 @@ Type const* Int8 ::getType() { return Type::getInt8Ty( getGlobalContext()); }
 Type const* Int16::getType() { return Type::getInt16Ty(getGlobalContext()); }
 Type const* Int32::getType() { return Type::getInt32Ty(getGlobalContext()); }
 Type const* Int64::getType() { return Type::getInt64Ty(getGlobalContext()); }
-void SStructType::Bind(map<string, SType*> &NamedTypes) {
-  for (unsigned i=0, e=ElementSTypeNames.size(); i != e; ++i)
-    ElementSTypes.push_back(NamedTypes[ElementSTypeNames[i]]);
+void SStructType::Bind(
+    vector<string> &ResolutionPath, map<string, SType*> &NamedTypes) {
+  if (ElementSTypes.size() == ElementSTypeNames.size())
+    return; // We are bound.
+  for (unsigned i=0, e=ResolutionPath.size(); i != e; ++i) {
+    if (ResolutionPath[i] == Name) {
+      std::cerr << "Circular type dependency detected: " << std::endl;
+      for (; i != e; ++i)
+        std::cerr << "  " << ResolutionPath[i] << " --> " << std::endl;
+      std::cerr << "  " << Name << std::endl;
+      exit(1);
+    }
+  }
+
+  ResolutionPath.push_back(Name);
+  for (unsigned i=0, e=ElementSTypeNames.size(); i != e; ++i) {
+    SType *ty = NamedTypes[ElementSTypeNames[i]];
+    ty->Bind(ResolutionPath, NamedTypes);
+    ElementSTypes.push_back(ty);
+  }
+  ResolutionPath.pop_back();
+
   vector<const Type *> tys;
   for (unsigned i=0, e=ElementSTypes.size(); i != e; ++i)
     tys.push_back(ElementSTypes[i]->getType());
@@ -65,6 +84,17 @@ Type const* SStructType::getType() { return PointerType::getUnqual(ThisType); }
 Type const *SFunctionType::getType() { return getFunctionType(); }
 Type const *SPtr::getType() { return PointerType::getUnqual(Ref->getType()); }
 Type const *SBool::getType() { return Type::getInt1Ty(getGlobalContext()); }
+
+
+/////////////////////////////////////////////////////////////////////
+
+
+unsigned SStructType::getIndex(const string &name) {
+  for (unsigned i=0, e =ElementNames.size(); i != e; ++i)
+    if (ElementNames[i] == name)
+      return i;
+  return -1;
+}
 
 
 }};

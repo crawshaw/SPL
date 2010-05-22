@@ -1,0 +1,26 @@
+struct Point = {
+  x : Int32,
+  y : Int32
+}
+
+struct PointContainer = {
+  c : Point
+}
+
+def t1(): Int32 = {
+  val pt = Point(5,8);
+  val c = PointContainer(pt);
+  val cc = c.c;
+  cc.x
+}
+
+def t2(): Int32 = {
+  val pt = Point(5,8);
+  val c = PointContainer(pt);
+  c.c.x
+}
+
+io main(): Int32 = {
+  t1() + t2()
+}
+

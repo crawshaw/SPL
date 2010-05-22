@@ -22,10 +22,25 @@ namespace SPL {
 
     enum Purity { Pure, Impure, Sealed, FunIO };
 
+    class Expr;
     class Func;
+    class Member;
     class SType;
     class SStructType;
     class SFunctionType;
+
+    class TypeInferer {
+      multimap<Expr*, Expr*>  eqns;
+      map<Expr*, SType*>      tys;
+      vector<Member*>         members;
+      unsigned ResolveMembers();
+    public:
+      void TypeUnification();
+      void TypePopulation();
+      void eqn(Expr* lhs, Expr* rhs);
+      void ty(Expr* expr, SType* ty);
+      void member(Member *);
+    };
 
     class Expr {
     protected:
@@ -37,7 +52,7 @@ namespace SPL {
       virtual Expr* LambdaLift(vector<Func*> &newFuncs);
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual void RewriteBinding(string &OldName, string &NewName);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &) = 0;
+      virtual void TypeInfer(TypeInferer &) = 0;
       virtual SType *getSType() { return ThisType; }
       virtual void setSType(SType *ty) { ThisType = ty; }
       virtual Type const *getType();
@@ -49,7 +64,7 @@ namespace SPL {
     public:
       Number(int val): Val(val) {}
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
       //virtual Type const *getType();
     };
@@ -60,7 +75,7 @@ namespace SPL {
     public:
       Variable(const string &name): Name(name) {}
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual void RewriteBinding(string &OldName, string &NewName);
@@ -72,7 +87,7 @@ namespace SPL {
       UnaryOp(Expr &expr): SubExpr(&expr) {};
     public:
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
@@ -89,7 +104,7 @@ namespace SPL {
       BinaryOp(Expr &lhs, Expr &rhs): LHS(&lhs), RHS(&rhs) {};
     public:
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
@@ -114,7 +129,7 @@ namespace SPL {
     public:
       Eq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
       //virtual Type const *getType();
     };
@@ -122,20 +137,22 @@ namespace SPL {
     class Seq : public BinaryOp {
     public:
       Seq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
     };
 
     class Member : public Expr {
       Expr *Source;
       const string FieldName;
-      // TODO: AllocaInst *Struct;
+      SStructType *getSourceSType();
     public:
       Member(Expr &source, string &fieldName)
         : Source(&source), FieldName(fieldName) {}
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
+      virtual void TypeInferSecondPass();
       virtual Value *Codegen();
+      Expr *getSource() { return Source; }
       //virtual Type const *getType();
     };
 
@@ -150,7 +167,7 @@ namespace SPL {
       Binding(const string &name, Expr& init, Expr& body)
         : Name(name), Init(&init), InitReg(NULL), Body(&body) {}
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
@@ -164,7 +181,7 @@ namespace SPL {
       If(Expr& cond, Expr& then, Expr& el)
         : Cond(&cond), Then(&then), Else(&el) {}
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
@@ -180,7 +197,7 @@ namespace SPL {
       Call(const string &calleeName, const vector<Expr*> &args)
         : CalleeName(calleeName), Args(args) {}
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
@@ -198,7 +215,7 @@ namespace SPL {
       Register(string &name, Expr *expr)
         : Name(name), Source(expr), Alloca(NULL) { }
       virtual void Bind(map<string, Expr*> &) {}
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
     };
 
@@ -209,7 +226,7 @@ namespace SPL {
       RegisterFunArg(SType *ty): Alloca(NULL) { ThisType = ty; }
       void setAlloca(AllocaInst *a) { Alloca = a; }
       virtual void Bind(map<string, Expr*> &) {}
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
     };
 
@@ -253,7 +270,7 @@ namespace SPL {
       const string GetName() { return Name; }
       void setContext(Expr &context) { Context = &context; }
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
@@ -277,7 +294,7 @@ namespace SPL {
         const map<string, string> &record, Func *func):
         FuncName(name), ActivationRecordNames(record), FuncRef(func) {}
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
       //virtual Type const *getType();
       virtual void RewriteBinding(string &OldName, string &NewName);
@@ -293,7 +310,7 @@ namespace SPL {
       Constructor(const string &stName, const vector<Expr*> &args)
         : STypeName(stName), Args(args) {}
       virtual void Bind(map<string, Expr*> &);
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
+      virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
     };
 
@@ -302,7 +319,7 @@ namespace SPL {
       const string Name;
     public:
       SType(const string &name): Name(name) {}
-      virtual void Bind(map<string, SType*> &NamedTypes) {}
+      virtual void Bind(vector<string> &, map<string, SType*> &) {}
       virtual Type const *getType() = 0;
       virtual Type const *getPassType() { return getType(); }
       virtual void dump() = 0;
@@ -338,14 +355,16 @@ namespace SPL {
           : SType(name), ThisType(NULL) {
         for (unsigned i=0, e=els.size(); i != e; ++i) {
           ElementNames.push_back(els[i]->first);
-          ElementSTypeNames.push_back(*els[i]->second);
+          ElementSTypeNames.push_back(string(*els[i]->second));
         }
       }
-      virtual void Bind(map<string, SType*> &);
+      virtual void Bind(vector<string> &, map<string, SType*> &);
       virtual Type const *getType();
       virtual Type const *getPassType();
       virtual void dump();
       Type const *getType(int idx) { return ElementSTypes[idx]->getType(); }
+      SType *getSType(int idx) { return ElementSTypes[idx]; }
+      unsigned getIndex(const string &name);
       void getElementSTypes(vector<SType*> &argTys) {
         argTys.assign(ElementSTypes.begin(), ElementSTypes.end());
       }
@@ -388,10 +407,6 @@ namespace SPL {
       void LambdaLiftFuncs();
       void run();
     };
-
-    // TODO: put these in a different namespace, maybe SPL::TypeInference
-    void TypeUnification(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys);
-    void TypePopulation(map<Expr*,SType*> &tys);
   };
 
   namespace Parser {

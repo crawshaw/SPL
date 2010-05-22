@@ -47,6 +47,18 @@ FunctionType const *SFunctionType::getFunctionType() {
   return FunctionType::get(Ret->getType(), ArgTypes, false);
 }
 
+SStructType *Member::getSourceSType() {
+  SStructType *sty = dynamic_cast<SStructType*>(Source->getSType());
+  if (sty == NULL) {
+    std::cerr << "Called member field `" << FieldName
+      << "'on non-structure type: ";
+    Source->getSType()->dump();
+    std::cerr << std::endl;
+    exit(1);
+  }
+  return sty;
+}
+
 /////////////////////////////////////////////////////////////////////
 
 
@@ -76,9 +88,7 @@ void Eq::Bind(map<string, Expr*> &NamedExprs) {
 }
 
 void Member::Bind(map<string, Expr*> &NamedExprs) {
-  // TODO
   Source->Bind(NamedExprs);
-  std::cerr << "Member::Bind not yet implemented!" << std::endl;
 }
 
 void Constructor::Bind(map<string, Expr*> &NamedExprs) {
@@ -204,7 +214,24 @@ Value *Seq::Codegen() {
 }
 
 Value *Member::Codegen() {
-  return NULL;
+  SStructType *sty = getSourceSType();
+
+  unsigned fieldIndex = sty->getIndex(FieldName);
+  std::cout << "fieldIndex = " << fieldIndex << std::endl;
+  Type const *fieldTy = sty->getType(fieldIndex);
+  std::cout << "fieldTy: ";
+  fieldTy->dump();
+
+  /*
+  Function *TheFunction = Builder.GetInsertBlock()->getParent();
+  IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
+    TheFunction->getEntryBlock().begin());
+  AllocaInst *a = TmpB.CreateAlloca(fieldTy, 0, FieldName);
+  */
+
+  Value *src = Source->Codegen();
+  Value *gep = Builder.CreateStructGEP(src, fieldIndex);
+  return Builder.CreateLoad(gep);
 }
 
 Value *Constructor::Codegen() {
@@ -429,17 +456,19 @@ void File::run() {
   LambdaLiftFuncs();
 
   std::cout << "PHASE: BindTypes" << std::endl;
-  // Load built-in types into type scope.
-  // NamedTypes["Bool"] = TODO
+  NamedTypes["Bool"]  = new SBool();
   NamedTypes["Int8"]  = new Int8();
   NamedTypes["Int16"] = new Int16();
   NamedTypes["Int32"] = new Int32();
   NamedTypes["Int64"] = new Int64();
-  // Bind and load top-level type definitions into the type scope.
   for (vector<SType*>::const_iterator i=STypes.begin(); i!=STypes.end(); i++) {
-    (*i)->Bind(NamedTypes);
     // TODO check for overloading primitive NamedTypes.count((*i)->getName())
     NamedTypes[(*i)->getName()] = *i;
+  }
+  for (vector<SType*>::const_iterator i=STypes.begin(); i!=STypes.end(); i++) {
+    std::cerr << "Binding " << (*i)->getName() << std::endl;
+    vector<string> ResolutionPath;
+    (*i)->Bind(ResolutionPath, NamedTypes);
   }
   // Load top-level function names into binding scope.
   map<string, Expr*> NamedExprs;
@@ -457,9 +486,10 @@ void File::run() {
   map<Expr*,SType*> tys;
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++) {
     //std::cerr << "Type inference on: " << (*i)->getName() << std::endl;
-    (*i)->TypeInfer(eqns, tys);
-    TypeUnification(eqns, tys);
-    TypePopulation(tys);
+    TypeInferer inferer;
+    (*i)->TypeInfer(inferer);
+    inferer.TypeUnification();
+    inferer.TypePopulation();
   }
 
 

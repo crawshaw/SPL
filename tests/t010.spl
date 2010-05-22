@@ -8,9 +8,10 @@ def mkPoint(x: Int32, y: Int32): Point = {
   x
 }
 
-def f(pt: Point): Int32 = { 9 } // pt.x + pt.y }
+def f(pt: Point): Int32 = { pt.x + pt.y }
 
 io main(): Int32 = {
   val x = mkPoint(5,8);
   f(x)
 }
+
