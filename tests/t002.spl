@@ -1,4 +1,4 @@
 
-def f() = { 4 }
+def f(): Int32 = { 4 }
 
-io main() = { 7 + f() }
+io main(): Int32 = { 7 + f() }

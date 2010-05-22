@@ -1,5 +1,5 @@
 
-io main() = {
+io main(): Int32 = {
   val x = 4;
   val y = 3;
   x + y

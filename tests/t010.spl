@@ -1,13 +1,16 @@
-
 struct Point = {
   x : Int32,
   y : Int32
 }
 
-def f(pt: Point) = { pt.x + pt.y }
-
-io main() = {
-  val pt = Point(5, 8);
-  f(pt)
+def mkPoint(x: Int32, y: Int32): Point = {
+  val x = Point(x,y);
+  x
 }
 
+def f(pt: Point): Int32 = { 9 } // pt.x + pt.y }
+
+io main(): Int32 = {
+  val x = mkPoint(5,8);
+  f(x)
+}

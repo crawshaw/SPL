@@ -11,7 +11,7 @@ void File::LambdaLiftFuncs() {
   for (vector<Func*>::const_iterator it=Funcs.begin(); it!=Funcs.end(); it++)
     (*it)->LambdaLift(newFuncs);
 
-  std::cout << "Lifted " << newFuncs.size() << " functions." << std::endl;
+  //std::cerr << "Lifted " << newFuncs.size() << " functions." << std::endl;
 
   Funcs.insert(Funcs.end(), newFuncs.begin(), newFuncs.end());
 }
@@ -69,7 +69,7 @@ Expr* Func::LambdaLift(vector<Func*> &newFuncs) {
     Context->RewriteBinding(Name, newName);
     Context->LambdaLift(newFuncs);
     Func *newFunc = new Func(
-      newName, newArgs, ArgSTypeNames, *Body, NULL, Pureness);
+      newName, newArgs, ArgSTypeNames, RetSTypeName, *Body, NULL, Pureness);
 
     map<string, string> activationRecord;
     set<string>::const_iterator it;

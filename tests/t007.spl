@@ -1,6 +1,6 @@
 
-def f(x,y) = {
+def f(x: Int32, y: Int32): Int32 = {
   x * 2
 }
 
-io main() = { f(7,8) }
+io main(): Int32 = { f(7,8) }

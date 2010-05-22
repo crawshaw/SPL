@@ -75,7 +75,7 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | exp '-' exp { $$ = new AST::Subtract(*$1, *$3); }
     | exp '*' exp { $$ = new AST::Multiply(*$1, *$3); }
     | exp ';' exp { $$ = new AST::Seq(*$1, *$3); }
-    | exp '.' exp { $$ = new AST::Member(*$1, *$3); }
+    | exp '.' IDENT { $$ = new AST::Member(*$1, *$3); }
     | exp EQ  exp { $$ = new AST::Eq(*$1, *$3); }
     | '{' exp '}' { $$ = $2; }
     | IDENT       { $$ = new AST::Variable(*$1); }
@@ -90,42 +90,48 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
       $$ = expr;
     }
 
-fun : DEF IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::Pure);
-    }
-    | DEF IDENT '(' args ')' ':' TIDENT '=' '{' exp '}' {
+fun : DEF IDENT '(' args ')' ':' TIDENT '=' '{' exp '}' {
       $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::Pure);
-    }
-    | IO IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::FunIO);
     }
     | IO IDENT '(' args ')' ':' TIDENT '=' '{' exp '}' {
       $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::FunIO);
     }
-    | IMP IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::Impure);
-    }
     | IMP IDENT '(' args ')' ':' TIDENT '=' '{' exp '}' {
       $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::Impure);
     }
+    /* TODO: when we have more than local type inference working, invoke.
+    | DEF IDENT '(' args ')' '=' '{' exp '}' {
+      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::Pure);
+    }
+    | IO IDENT '(' args ')' '=' '{' exp '}' {
+      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::FunIO);
+    }
+    | IMP IDENT '(' args ')' '=' '{' exp '}' {
+      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::Impure);
+    }
+    */
 
 args  : {$$ = new vector<pair<string,string*>*>(); }
       | IDENT ':' TIDENT {
         $$ = new vector<pair<string,string*>*>();
         $$->push_back(new pair<string,string*>(*$1, $3));
       }
+      /* TODO
       | IDENT {
         $$ = new vector<pair<string,string*>*>();
         $$->push_back(new pair<string,string*>(*$1, NULL));
       }
+      */
       | args ',' IDENT ':' TIDENT {
         $1->push_back(new pair<string,string*>(*$3, $5));
         $$ = $1;
       }
+      /* TODO
       | args ',' IDENT {
         $1->push_back(new pair<string,string*>(*$3, NULL));
         $$ = $1;
       }
+      */
 
 callargs
       : { $$ = new std::vector<AST::Expr*>(); }

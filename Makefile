@@ -4,12 +4,14 @@ test: build/spl
 
 build/grammar.cpp: src/ast.h
 src/codegen.cpp: src/ast.h
+src/typeinference.cpp: src/ast.h
+src/stypes.cpp: src/ast.h
 
 build/grammar.cpp: src/grammar.y
 	@mkdir -p build
 	bison -o $@ $<
 
-build/spl: build/grammar.cpp src/codegen.cpp src/lambdalift.cpp
+build/spl: build/grammar.cpp src/codegen.cpp src/lambdalift.cpp src/typeinference.cpp src/stypes.cpp
 	clang++ `llvm-config --cxxflags --ldflags --libs` -frtti -I src -g -o $@ $^
 
 clean:

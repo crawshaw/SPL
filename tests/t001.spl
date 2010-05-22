@@ -1,2 +1,2 @@
 
-io main() = { 8 }
+io main(): Int32 = { 8 }

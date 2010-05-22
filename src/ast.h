@@ -126,23 +126,29 @@ namespace SPL {
       virtual Value *Codegen();
     };
 
-    class Member : public BinaryOp {
+    class Member : public Expr {
+      Expr *Source;
+      const string FieldName;
       // TODO: AllocaInst *Struct;
     public:
-      Member(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
+      Member(Expr &source, string &fieldName)
+        : Source(&source), FieldName(fieldName) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
       virtual Value *Codegen();
       //virtual Type const *getType();
     };
 
+    class Register;
+
     class Binding: public Expr {
       string Name;
       Expr* Init;
+      Register *InitReg;
       Expr* Body;
     public:
       Binding(const string &name, Expr& init, Expr& body)
-        : Name(name), Init(&init), Body(&body) {}
+        : Name(name), Init(&init), InitReg(NULL), Body(&body) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
       virtual Value *Codegen();
@@ -185,11 +191,12 @@ namespace SPL {
     // Used to wrap a local LLVM register.
     class Register : public Expr {
       const string Name;
-      AllocaInst *Alloca;
+      //AllocaInst *Alloca;
+      Value *Alloca;
       Expr *Source;
     public:
-      Register(string &name, Expr *expr, SType *ty)
-        : Name(name), Source(expr), Alloca(NULL) { ThisType = ty; }
+      Register(string &name, Expr *expr)
+        : Name(name), Source(expr), Alloca(NULL) { }
       virtual void Bind(map<string, Expr*> &) {}
       virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
       virtual Value *Codegen();
@@ -202,12 +209,11 @@ namespace SPL {
       RegisterFunArg(SType *ty): Alloca(NULL) { ThisType = ty; }
       void setAlloca(AllocaInst *a) { Alloca = a; }
       virtual void Bind(map<string, Expr*> &) {}
-      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &) {}
+      virtual void TypeInfer(multimap<Expr*,Expr*> &, map<Expr*,SType*> &);
       virtual Value *Codegen();
     };
 
     class Func: public Expr {
-      SFunctionType *ThisType;
       string Name;
       vector<string> Args;
       vector<string*> ArgSTypeNames;
@@ -238,10 +244,11 @@ namespace SPL {
       Func(const string &name,
           const vector<string> &args,
           const vector<string*> &argSTypes,
+          const string* retSType,
           Expr &body, Expr *context, Purity purity):
           Name(name), Args(args), ArgSTypeNames(argSTypes),
           Body(&body), Context(context),
-          RetSTypeName(NULL), RetSType(NULL),
+          RetSTypeName(retSType), RetSType(NULL),
           function(NULL), Pureness(purity) {}
       const string GetName() { return Name; }
       void setContext(Expr &context) { Context = &context; }
@@ -251,7 +258,7 @@ namespace SPL {
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
-      SFunctionType *getFunctionSType() { return ThisType; }
+      SFunctionType *getFunctionSType();
       string getName() { return Name; }
       Function *getFunction();
       vector<string> &getArgNames() { return Args; }
@@ -291,25 +298,35 @@ namespace SPL {
     };
 
     class SType {
+    protected:
       const string Name;
     public:
       SType(const string &name): Name(name) {}
       virtual void Bind(map<string, SType*> &NamedTypes) {}
       virtual Type const *getType() = 0;
       virtual Type const *getPassType() { return getType(); }
+      virtual void dump() = 0;
       const string getName() { return Name; }
     };
 
-    class Int8  : public SType { public:
-      Int8(): SType("Int8") {} virtual Type const *getType(); };
-    class Int16 : public SType { public:
-      Int16(): SType("Int16") {} virtual Type const *getType(); };
-    class Int32 : public SType { public:
-      Int32(): SType("Int32") {} virtual Type const *getType(); };
-    class Int64 : public SType { public:
-      Int64(): SType("Int64") {} virtual Type const *getType(); };
-    class SBool : public SType { public:
-      SBool(): SType("Bool") {} virtual Type const *getType(); };
+    class SPrimitive : public SType {
+    public:
+      SPrimitive(const string &name): SType(name) {}
+      virtual void dump();
+    };
+
+    class Int8  : public SPrimitive { public:
+      Int8(): SPrimitive("Int8") {} virtual Type const *getType(); };
+    class Int16 : public SPrimitive { public:
+      Int16(): SPrimitive("Int16") {} virtual Type const *getType(); };
+    class Int32 : public SPrimitive { public:
+      Int32(): SPrimitive("Int32") {} virtual Type const *getType(); };
+    class Int64 : public SPrimitive { public:
+      Int64(): SPrimitive("Int64") {} virtual Type const *getType(); };
+    class SBool : public SPrimitive { public:
+      SBool(): SPrimitive("Bool") {} virtual Type const *getType(); };
+
+    // TODO: common superclass for SStructType and SUnionType.
 
     class SStructType : public SType {
       vector<string>  ElementNames;
@@ -327,11 +344,15 @@ namespace SPL {
       virtual void Bind(map<string, SType*> &);
       virtual Type const *getType();
       virtual Type const *getPassType();
+      virtual void dump();
       Type const *getType(int idx) { return ElementSTypes[idx]->getType(); }
+      void getElementSTypes(vector<SType*> &argTys) {
+        argTys.assign(ElementSTypes.begin(), ElementSTypes.end());
+      }
     };
 
     class SFunctionType : public SType {
-      vector<SType*>  Args;
+      vector<SType*> Args;
       SType* Ret;
     public:
       SFunctionType(string &name, vector<SType*> &args, SType* ret)
@@ -340,6 +361,7 @@ namespace SPL {
       SType* getReturnType() { return Ret; }
       llvm::FunctionType const *getFunctionType();
       virtual Type const *getType();
+      virtual void dump();
     };
 
     class SPtr : public SType {
@@ -347,6 +369,7 @@ namespace SPL {
     public:
       SPtr(SType *ref): SType("Ptr:" + ref->getName()), Ref(ref) {}
       virtual Type const *getType();
+      virtual void dump();
     };
 
     class SUnionType  : public SType {
@@ -365,6 +388,10 @@ namespace SPL {
       void LambdaLiftFuncs();
       void run();
     };
+
+    // TODO: put these in a different namespace, maybe SPL::TypeInference
+    void TypeUnification(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys);
+    void TypePopulation(map<Expr*,SType*> &tys);
   };
 
   namespace Parser {
