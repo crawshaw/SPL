@@ -33,7 +33,9 @@ void Seq::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
   RHS->TypeInfer(eqns, tys);
 }
 void Member::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
-  // TODO
+  Source->TypeInfer(eqns, tys);
+  // TODO even with local type inference, this needs to happen in a
+  // pass after initial substition, when the type of the Sourceis known.
 }
 void Binding::TypeInfer(multimap<Expr*,Expr*> &eqns, map<Expr*,SType*> &tys) {
   Init->TypeInfer(eqns, tys);
@@ -128,8 +130,17 @@ void TypeUnification(multimap<Expr*,Expr*> &eqnsMap, map<Expr*,SType*> &tys) {
   std::list<pair<Expr*,Expr*> > eqns;
   {
     multimap<Expr*,Expr*>::const_iterator i;
-    for (i=eqnsMap.begin(); i != eqnsMap.end(); i++)
+    for (i=eqnsMap.begin(); i != eqnsMap.end(); i++) {
       eqns.push_back(*i);
+
+      Expr *fst = i->first;
+      if (fst->getSType() != NULL && tys.count(fst) == 0)
+        tys[fst] = fst->getSType();
+
+      Expr *snd = i->second;
+      if (snd->getSType() != NULL && tys.count(snd) == 0)
+        tys[snd] = snd->getSType();
+    }
   }
 
   unsigned noMatchesIn = 0;
