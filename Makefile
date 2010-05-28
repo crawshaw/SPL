@@ -1,3 +1,5 @@
+CXX := clang++ `/usr/bin/llvm-config --cxxflags` -frtti -I src -g -c
+
 test: build/spl
 	@echo 'Running tests:'
 	@for f in `ls tests/*.spl`; do echo "  $$f"; ./$^ $$f; done
@@ -11,8 +13,23 @@ build/grammar.cpp: src/grammar.y
 	@mkdir -p build
 	bison -o $@ $<
 
-build/spl: build/grammar.cpp src/codegen.cpp src/lambdalift.cpp src/typeinference.cpp src/stypes.cpp
-	clang++ `llvm-config --cxxflags --ldflags --libs` -frtti -I src -g -o $@ $^
+build/spl: build/grammar.o build/codegen.o build/lambdalift.o build/typeinference.o build/stypes.o
+	clang++ -g $^ `/usr/bin/llvm-config --ldflags --libs core jit native` -o $@
+
+build/grammar.o: build/grammar.cpp
+	$(CXX) -o $@ $<
+
+build/codegen.o: src/codegen.cpp
+	$(CXX) -o $@ $<
+
+build/lambdalift.o: src/lambdalift.cpp
+	$(CXX) -o $@ $<
+
+build/typeinference.o: src/typeinference.cpp
+	$(CXX) -o $@ $<
+
+build/stypes.o: src/stypes.cpp
+	$(CXX) -o $@ $<
 
 clean:
 	rm -rf build
