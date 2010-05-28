@@ -71,10 +71,10 @@ Expr* Func::LambdaLift(vector<Func*> &newFuncs) {
     Func *newFunc = new Func(
       newName, newArgs, ArgSTypeNames, RetSTypeName, *Body, NULL, Pureness);
 
-    map<string, string> activationRecord;
+    vector<string> activationRecord;
     set<string>::const_iterator it;
     for (it=freeVars->begin(); it!=freeVars->end(); it++)
-      activationRecord.insert(pair<string,string>(*it, *it));
+      activationRecord.push_back(*it);
     Closure *closure = new Closure(newName, activationRecord, newFunc);
     newFuncs.push_back(newFunc);
 

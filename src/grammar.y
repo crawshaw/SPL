@@ -24,9 +24,11 @@ static std::vector<AST::Instance*>  instances;
   string *ident;
   vector<pair<string,string*>*> *args;
   vector<AST::Expr*> *callargs;
+  vector<string> *templates;
   AST::SType *type;
   AST::Class *cls;
   AST::Instance *instance;
+  AST::Purity purity;
 }
 
 %type <exp>       exp
@@ -40,6 +42,9 @@ static std::vector<AST::Instance*>  instances;
 %type <type>      sunion
 %type <cls>       class
 %type <instance>  instance
+%type <templates> templates
+%type <templates> templateSet
+%type <purity>    funDef
 
 // TODO: add TK_
 %token DEF
@@ -90,26 +95,25 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
       $$ = expr;
     }
 
-fun : DEF IDENT '(' args ')' ':' TIDENT '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::Pure);
-    }
-    | IO IDENT '(' args ')' ':' TIDENT '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::FunIO);
-    }
-    | IMP IDENT '(' args ')' ':' TIDENT '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, $7, *$10, NULL, AST::Impure);
+fun : funDef IDENT templateSet '(' args ')' ':' TIDENT '=' '{' exp '}' {
+      $$ = new AST::Func(*$2, *$3, *$5, $8, *$11, NULL, $1);
     }
     /* TODO: when we have more than local type inference working, invoke.
-    | DEF IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::Pure);
-    }
-    | IO IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::FunIO);
-    }
-    | IMP IDENT '(' args ')' '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, AST::Impure);
+    | funDef IDENT '(' args ')' '=' '{' exp '}' {
+      $$ = new AST::Func(*$2, *$4, NULL, *$8, NULL, $1);
     }
     */
+
+funDef : DEF  { $$ = AST::Pure }
+       | IO   { $$ = AST::FunIO }
+       | IMP  { $$ = AST::Impure }
+
+templateSet : { $$ = new vector<string>(); }
+          | '<' templates '>' { $$ = $2; }
+
+templates : { $$ = new vector<string>(); }
+          | templates ',' TIDENT { $1->push_back(*$3); $$ = $1; }
+          | TIDENT { $$ = new vector<string>(); $$->push_back(*$1); }
 
 args  : {$$ = new vector<pair<string,string*>*>(); }
       | IDENT ':' TIDENT {
@@ -209,6 +213,8 @@ bool isaspecial(int ch) {
     case '+': // TODO: remove these special cases, treat as identifiers
     case '-':
     case '*':
+    case '<':
+    case '>':
       return true;
     default:
       return false;

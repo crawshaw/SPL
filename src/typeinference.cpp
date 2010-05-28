@@ -106,10 +106,8 @@ void Closure::TypeInfer(TypeInferer &inferer) {
 
   vector<RegisterFunArg*> argRegs;
   FuncRef->getArgRegs(argRegs);
-  unsigned idx = 0;
-  map<string,Expr*>::const_iterator it;
-  for (it=ActivationRecord.begin(); it!=ActivationRecord.end(); ++it, ++idx)
-    inferer.eqn((*it).second, argRegs[idx]);
+  for (unsigned i=0, e=ActivationRecord.size(); i != e; ++i)
+    inferer.eqn(ActivationRecord[i], argRegs[i]);
 }
 void Constructor::TypeInfer(TypeInferer &inferer) {
   SType *ty = NamedTypes[STypeName];
@@ -178,10 +176,11 @@ void TypeInferer::TypeUnification() {
     pair<Expr*,Expr*> eqn = es.front();
     es.pop_front();
 
+    /*
     if (tys.count(eqn.first) > 0) {
       tys[eqn.second] = tys[eqn.first];
       noMatchesIn = 0;
-    } else if (tys.count(eqn.second) > 0) {
+    } else*/ if (tys.count(eqn.second) > 0) {
       tys[eqn.first] = tys[eqn.second];
       noMatchesIn = 0;
     } else {

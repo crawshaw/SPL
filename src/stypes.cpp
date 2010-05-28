@@ -44,6 +44,10 @@ void SPtr::dump() {
   std::cerr << std::endl;
 }
 
+void SGenericType::dump() {
+  std::cerr << "SGenericType::" << Name;
+}
+
 
 /////////////////////////////////////////////////////////////////////
 
@@ -84,6 +88,13 @@ Type const* SStructType::getType() { return PointerType::getUnqual(ThisType); }
 Type const *SFunctionType::getType() { return getFunctionType(); }
 Type const *SPtr::getType() { return PointerType::getUnqual(Ref->getType()); }
 Type const *SBool::getType() { return Type::getInt1Ty(getGlobalContext()); }
+Type const *SGenericType::getType() {
+  if (Binding == NULL) {
+    return Type::getInt8PtrTy(getGlobalContext());
+  } else {
+    return Binding->getType();
+  }
+}
 
 
 /////////////////////////////////////////////////////////////////////

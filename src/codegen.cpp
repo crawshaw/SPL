@@ -116,10 +116,9 @@ void If::Bind(map<string, Expr*> &NamedExprs) {
 }
 
 void Closure::Bind(map<string,Expr*> &NamedExprs) {
-  map<string,string>::const_iterator it;
+  vector<string>::const_iterator it;
   for (it=ActivationRecordNames.begin(); it!=ActivationRecordNames.end(); ++it)
-    ActivationRecord[(*it).first] =
-      NamedExprs[ActivationRecordNames[(*it).second]];
+    ActivationRecord.push_back(NamedExprs[*it]);
 }
 
 void Call::Bind(map<string, Expr*> &NamedExprs) {
@@ -140,12 +139,17 @@ void Func::Bind(map<string, Expr*> &NamedExprs) {
   // restrictive, I believe our type system can be fully inferred.
   // But it means we can resolve the function type right here, and
   // then rely on Func types in the inference stage.
+
+  for (unsigned i=0, e=Generics.size(); i != e; ++i)
+    NamedTypes[Generics[i]] = new SGenericType(Generics[i]);
+
   RetSType = NamedTypes[*RetSTypeName];
   if (RetSType == NULL) {
-    std::cerr << "Unknown return type `" << RetSTypeName <<
+    std::cerr << "Unknown return type `" << *RetSTypeName <<
       "' on function `" << Name << "'." << std::endl;
     exit(1);
   }
+
   for (unsigned i=0, e=Args.size(); i != e; ++i) {
     SType *ty = NamedTypes[*ArgSTypeNames[i]];
     if (ty == NULL) {
@@ -155,6 +159,10 @@ void Func::Bind(map<string, Expr*> &NamedExprs) {
     }
     ArgSTypes.push_back(ty);
   }
+
+  for (unsigned i=0, e=Generics.size(); i != e; ++i)
+    NamedTypes[Generics[i]] = NULL;
+
   setSType(new SFunctionType(Name, ArgSTypes, RetSType));
 
   // Bind body.
@@ -172,6 +180,47 @@ void Func::Bind(map<string, Expr*> &NamedExprs) {
   for (unsigned i=0, e=Args.size(); i != e; ++i)
     NamedExprs[Args[i]] = oldBindings[i];
 }
+
+
+/////////////////////////////////////////////////////////////////////
+
+
+void Number::FindCalls(vector<Call*> &calls) { }
+void Variable::FindCalls(vector<Call*> &calls) { }
+void UnaryOp::FindCalls(vector<Call*> &calls) {
+  SubExpr->FindCalls(calls);
+}
+void BinaryOp::FindCalls(vector<Call*> &calls) {
+  LHS->FindCalls(calls);
+  RHS->FindCalls(calls);
+}
+void Member::FindCalls(vector<Call*> &calls) {
+  Source->FindCalls(calls);
+}
+void Binding::FindCalls(vector<Call*> &calls) {
+  Init->FindCalls(calls);
+  Body->FindCalls(calls);
+}
+void If::FindCalls(vector<Call*> &calls) {
+  Cond->FindCalls(calls);
+  Then->FindCalls(calls);
+  Else->FindCalls(calls);
+}
+void Call::FindCalls(vector<Call*> &calls) {
+  calls.push_back(this);
+}
+void Func::FindCalls(vector<Call*> &calls) {
+  Body->FindCalls(calls);
+}
+void Closure::FindCalls(vector<Call*> &calls) {
+  // TODO: what about the ActivationRecord?
+}
+void Constructor::FindCalls(vector<Call*> &calls) {
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    Args[i]->FindCalls(calls);
+}
+void Register::FindCalls(vector<Call*> &calls) {}
+void RegisterFunArg::FindCalls(vector<Call*> &calls) {}
 
 
 /////////////////////////////////////////////////////////////////////
@@ -319,12 +368,14 @@ void Closure::getArgRegs(vector<RegisterFunArg*> &args) {
   args.assign(funArgRegs.begin() + ActivationRecord.size(), funArgRegs.end());
 }
 
+vector<Expr*> *Closure::getActivationRecord() { return &ActivationRecord; }
+
 // Can only be called after Bind phase.
 Value *Closure::GenCallWith(vector<Value*> &argVals) {
   vector<Value*> args;
   vector<string> argNames = FuncRef->getArgNames();
-  for (unsigned i=0, e=argNames.size(); i != e; ++i)
-    args.push_back(ActivationRecord[argNames[i]]->Codegen());
+  for (unsigned i=0, e=ActivationRecord.size(); i != e; ++i)
+    args.push_back(ActivationRecord[i]->Codegen());
   for (unsigned i=0, e=argVals.size(); i != e; ++i)
     args.push_back(argVals[i]);
 
@@ -332,18 +383,32 @@ Value *Closure::GenCallWith(vector<Value*> &argVals) {
     FuncRef->getFunction(), args.begin(), args.end(), "calltmp");
 }
 
-SType *Call::getSType() {
-  if (ThisType == NULL) {
-    if (Closure *cl = dynamic_cast<Closure*>(Callee)) {
-      ThisType = cl->getFunction()->getFunctionSType()->getReturnType();
-    } else if (Func *fn = dynamic_cast<Func*>(Callee)) {
-      ThisType = fn->getFunctionSType()->getReturnType();
-    } else {
-      std::cerr << "Call to " << CalleeName << " is not function nor closure."
-        << std::endl;
-      exit(1);
-    }
+Func *Call::getFunc() {
+  if (Closure *cl = dynamic_cast<Closure*>(Callee)) {
+    return cl->getFunction();
+  } else if (Func *fn = dynamic_cast<Func*>(Callee)) {
+    return fn;
+  } else {
+    std::cerr << "Call to " << CalleeName << " is not function nor closure."
+      << std::endl;
+    exit(1);
   }
+}
+
+void Call::getAllArgs(vector<Expr*> &args) {
+  if (Closure *cl = dynamic_cast<Closure*>(Callee)) {
+    Func *fn = cl->getFunction();
+    vector<Expr*> *rec = cl->getActivationRecord();
+    for (unsigned i=0, e=rec->size(); i != e; ++i)
+      args.push_back((*rec)[i]);
+  }
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    args.push_back(Args[i]);
+}
+
+SType *Call::getSType() {
+  if (ThisType == NULL)
+    ThisType = getFunc()->getFunctionSType()->getReturnType();
   return ThisType;
 }
 
@@ -393,6 +458,18 @@ Function *Func::getFunction() {
   return function;
 }
 
+void Func::setGenerics(const vector<SType*> &tys) {
+  GenericsAreBound = true;
+  for (unsigned i=0, e=tys.size(); i != e; ++i)
+    GenericPlaceholders[i]->setBinding(tys[i]);
+}
+void Func::clearGenerics() {
+  GenericsAreBound = false;
+  for (unsigned i=0, e=GenericPlaceholders.size(); i != e; ++i)
+    GenericPlaceholders[i]->setBinding(NULL);
+}
+
+
 
 Value *Func::Codegen() {
   Function *function = getFunction();
@@ -423,10 +500,64 @@ Value *Func::Codegen() {
   Builder.CreateRet(ret);
   //function->dump();
   verifyFunction(*function);
-  // TODO: TheFPM->run(*function);
   TheFPM->run(*function);
 
   return function;
+}
+
+void Func::MatchGenerics(
+    const vector<SType*> &callTypes,
+    vector<SType*> &genericBindings) {
+  assert(callTypes.size() == Args.size());
+  map<SGenericType*, SType*> matchedGenerics;
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    if (SGenericType* gen = dynamic_cast<SGenericType*>(ArgSTypes[i]))
+      matchedGenerics[gen] = callTypes[i];
+  for (unsigned i=0, e=GenericPlaceholders.size(); i != e; ++i)
+    genericBindings[i] = matchedGenerics[GenericPlaceholders[i]];
+
+  // As we are generating type signatures for specialization, all
+  // boxed structures are equivalent to us, so we replace them with null.
+  for (unsigned i=0, e=genericBindings.size(); i != e; ++i)
+    if (SStructType *sty = dynamic_cast<SStructType*>(genericBindings[i]))
+      if (!sty->isUnboxed())
+        genericBindings[i] = NULL;
+}
+
+void File::FindSpecializedFuncs(
+    vector<Call*> &calls, map<Func*, set<vector<SType*> >* > &specs) {
+  for (unsigned i=0, e=calls.size(); i != e; ++i) {
+    Func *fn = calls[i]->getFunc();
+    vector<SType*> callTypes;
+    {
+      vector<Expr*> args;
+      calls[i]->getAllArgs(args);
+      for (unsigned i=0, e=args.size(); i != e; ++i)
+        callTypes.push_back(args[i]->getSType());
+    }
+    vector<SType*> *genericBindings = new vector<SType*>();
+    fn->MatchGenerics(callTypes, *genericBindings);
+
+    bool isAllNull = true;
+    for(unsigned i=0, e=genericBindings->size(); i != e; ++i) {
+      if ((*genericBindings)[i] != NULL) {
+        isAllNull = false;
+        break;
+      }
+    }
+
+    if (specs.count(fn) == 0)
+      specs[fn] = new set<vector<SType*> >();
+    specs[fn]->insert(*genericBindings);
+  }
+}
+
+void File::NameSpecializedFuncs(
+    vector<Call*> &calls, map<Func*, set<vector<SType*> >* > &specs) {
+  //
+  //
+  //
+  //
 }
 
 void File::run() {
@@ -492,12 +623,32 @@ void File::run() {
     inferer.TypePopulation();
   }
 
+  // PHASE: Specialization Codegen
+  {
+    std::cout << "PHASE: Specialization Codegen" << std::endl;
+    vector<Call*> calls;
+    map<Func*, set< vector<SType*> >* > specializedFuncs;
+    for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
+      (*i)->FindCalls(calls);
+    FindSpecializedFuncs(calls, specializedFuncs);
+    NameSpecializedFuncs(calls, specializedFuncs);
+    map<Func*, set<vector<SType*> >* >::const_iterator it;
+    for (it=specializedFuncs.begin(); it != specializedFuncs.end(); ++it) {
+      Func *fn = it->first;
+      set<vector<SType*> >* specs = it->second;
+      set<vector<SType*> >::iterator i;
+      for (i=specs->begin(); i != specs->end(); ++i) {
+        fn->setGenerics(*i);
+        fn->Codegen();
+        fn->clearGenerics();
+      }
+    }
+  }
 
   // PHASE: Code generation
   std::cout << "PHASE: Codegen" << std::endl;
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++) {
     // TODO: pass in the LLVM state as an argument.
-    //std::cerr << "Generating code for " << Name <<std::endl;
     (*i)->Codegen();
   }
 
