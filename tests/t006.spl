@@ -3,3 +3,4 @@ def id<A>(x: A): A = { x }
 def f(y: Int32): Int32 = { id(y) }
 def g(z: Int64): Int64 = { id(z) }
 
+io main(): Int32 = { f(4) }

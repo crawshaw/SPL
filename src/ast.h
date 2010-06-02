@@ -53,7 +53,7 @@ namespace SPL {
       virtual Value *Codegen() = 0;
       virtual Expr* LambdaLift(vector<Func*> &newFuncs);
       virtual set<string> *FindFreeVars(set<string> *b);
-      virtual void FindCalls(vector<Call*> &) = 0;
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &) = 0;
       virtual void RewriteBinding(string &OldName, string &NewName);
       virtual void TypeInfer(TypeInferer &) = 0;
       virtual SType *getSType() { return ThisType; }
@@ -68,7 +68,7 @@ namespace SPL {
       Number(int val): Val(val) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
       //virtual Type const *getType();
     };
@@ -80,7 +80,7 @@ namespace SPL {
       Variable(const string &name): Name(name) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual void RewriteBinding(string &OldName, string &NewName);
@@ -93,7 +93,7 @@ namespace SPL {
     public:
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
@@ -111,7 +111,7 @@ namespace SPL {
     public:
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
@@ -157,7 +157,7 @@ namespace SPL {
         : Source(&source), FieldName(fieldName) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual void TypeInferSecondPass();
       virtual Value *Codegen();
       Expr *getSource() { return Source; }
@@ -176,7 +176,7 @@ namespace SPL {
         : Name(name), Init(&init), InitReg(NULL), Body(&body) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
@@ -191,7 +191,7 @@ namespace SPL {
         : Cond(&cond), Then(&then), Else(&el) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
@@ -203,19 +203,22 @@ namespace SPL {
       string CalleeName;
       Expr *Callee; // Either a Closure or a Func. TODO: Subclass Call?
       vector<Expr*> Args;
+      void getAllArgs(vector<Expr*> &);
+
     public:
       Call(const string &calleeName, const vector<Expr*> &args)
         : CalleeName(calleeName), Args(args) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
       virtual SType *getSType();
       Func* getFunc();
-      void getAllArgs(vector<Expr*> &);
+
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
+      void getGenerics(vector<SType*> &);
     };
 
     // Used to wrap a local LLVM register.
@@ -229,7 +232,7 @@ namespace SPL {
         : Name(name), Source(expr), Alloca(NULL) { }
       virtual void Bind(map<string, Expr*> &) {}
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
     };
 
@@ -241,7 +244,7 @@ namespace SPL {
       void setAlloca(AllocaInst *a) { Alloca = a; }
       virtual void Bind(map<string, Expr*> &) {}
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
     };
 
@@ -259,7 +262,7 @@ namespace SPL {
       Expr* Body;
       Expr* Context; // Only valid prior to lambda lifting.
       Purity Pureness;
-      Function *function;
+      map<vector<SType*>,Function*> functions;
 
     vector<AllocaInst*> *createArgAllocas();
 
@@ -271,7 +274,7 @@ namespace SPL {
           Expr &body, Expr *context, Purity purity):
           Name(name), Body(&body), Context(context),
           RetSTypeName(retSType), RetSType(NULL),
-          function(NULL), Pureness(purity),
+          Pureness(purity),
           Generics(generics), GenericsAreBound(false) {
         for (unsigned i=0, e=args.size(); i != e; ++i) {
           Args.push_back(args[i]->first);
@@ -286,24 +289,25 @@ namespace SPL {
           Name(name), Args(args), ArgSTypeNames(argSTypes),
           Body(&body), Context(context),
           RetSTypeName(retSType), RetSType(NULL),
-          function(NULL), Pureness(purity) {}
+          Pureness(purity) {}
       const string GetName() { return Name; }
       void setContext(Expr &context) { Context = &context; }
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
       SFunctionType *getFunctionSType();
-      string getName() { return Name; }
+      void getFullName(string &fnName);
       Function *getFunction();
       vector<string> &getArgNames() { return Args; }
       void getArgRegs(vector<RegisterFunArg*> &args) {
         args.insert(args.end(), ArgRegs.begin(), ArgRegs.end());
       }
-      bool isGeneric() { return Generics.size() > 0; }
+      void getGenerics(vector<SType*> &gen);
+      bool isGeneric();
       void setGenerics(const vector<SType*> &tys);
       void clearGenerics();
       void MatchGenerics(const vector<SType*> &callTypes,
@@ -321,12 +325,11 @@ namespace SPL {
         FuncName(name), ActivationRecordNames(record), FuncRef(func) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
       //virtual Type const *getType();
       virtual void RewriteBinding(string &OldName, string &NewName);
-      Func *getFunction() { return FuncRef; }
-      Value *GenCallWith(vector<Value*> &args);
+      Func *getFunc() { return FuncRef; }
       void getArgRegs(vector<RegisterFunArg*> &args);
       vector<Expr*> *getActivationRecord();
     };
@@ -339,7 +342,7 @@ namespace SPL {
         : STypeName(stName), Args(args) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
-      virtual void FindCalls(vector<Call*> &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
     };
 
@@ -435,6 +438,7 @@ namespace SPL {
       virtual Type const *getType();
       virtual void dump();
       void setBinding(SType *ty) { Binding = ty; }
+      SType *getBinding() { return Binding; }
     };
 
     class Class;
@@ -444,10 +448,6 @@ namespace SPL {
       string Name;
       vector<Func*> Funcs;
       vector<SType*> STypes;
-      void FindSpecializedFuncs(
-        vector<Call*> &, map<Func*, set<vector<SType*> >* > &);
-      void NameSpecializedFuncs(
-        vector<Call*> &, map<Func*, set<vector<SType*> >* > &);
 
     public:
       File(string &name, const vector<Func*> &funcs, const vector<SType*> &tys)
@@ -477,6 +477,40 @@ namespace SPL {
         std::ios_base& (*f)(std::ios_base&)) {
       std::istringstream iss(s);
       return !(iss >> f >> t).fail();
+    }
+
+    template<typename T>
+    void removeDuplicates(std::vector<T>& vec) {
+      std::sort(vec.begin(), vec.end());
+      vec.erase(std::unique(vec.begin(), vec.end()), vec.end());
+    }
+
+    template<typename T>
+    bool allEqual(std::vector<T>& vec, T& val) {
+      bool allEq = true;
+      for (unsigned i=0, e=vec.size(); i != e; ++i) {
+        if (vec[i] != val) {
+          allEq = false;
+          break;
+        }
+      }
+      return allEq;
+    }
+
+    template<typename T>
+    bool allNull(std::vector<T>& vec) {
+      for (unsigned i=0, e=vec.size(); i != e; ++i)
+        if (vec[i] != NULL)
+          return false;
+      return true;
+    }
+
+    template<typename T>
+    bool contains(std::vector<T>& vec, T& val) {
+      for (unsigned i=0, e=vec.size(); i != e; ++i)
+        if (vec[i] == val)
+          return true;
+      return false;
     }
   };
 
