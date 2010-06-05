@@ -140,9 +140,11 @@ void Func::Bind(map<string, Expr*> &NamedExprs) {
   // But it means we can resolve the function type right here, and
   // then rely on Func types in the inference stage.
 
+  vector<SType*> oldTypeBindings;
   for (unsigned i=0, e=Generics.size(); i != e; ++i) {
     SGenericType *ty = new SGenericType(Generics[i]);
     GenericPlaceholders.push_back(ty);
+    oldTypeBindings.push_back(NamedTypes[Generics[i]]);
     NamedTypes[Generics[i]] = ty;
   }
 
@@ -182,6 +184,9 @@ void Func::Bind(map<string, Expr*> &NamedExprs) {
 
   for (unsigned i=0, e=Args.size(); i != e; ++i)
     NamedExprs[Args[i]] = oldBindings[i];
+
+  for (unsigned i=0, e=Generics.size(); i != e; ++i)
+    NamedTypes[Generics[i]] = oldTypeBindings[i];
 }
 
 
@@ -210,11 +215,22 @@ void If::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   Else->FindCalls(calls);
 }
 void Call::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
+    Args[i]->FindCalls(calls);
+
   vector<SType*> genericBindings;
   Func *fn = getFunc();
   getGenerics(genericBindings);
   pair<Func*, vector<SType*> > res(fn, genericBindings);
   std::cout << "processing call to " << CalleeName << std::endl;
+  std::cout << "--- generic bindings: " << std::endl;
+  for (unsigned i=0, e=genericBindings.size(); i != e; ++i) {
+    if (genericBindings[i] == NULL)
+      std::cout << "NULL" << std::endl;
+    else
+      genericBindings[i]->dump();
+  }
+  std::cout << "---" << std::endl;
 
   if (Util::contains(calls, res))
     return;
@@ -224,6 +240,17 @@ void Call::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   fn->getGenerics(oldGenericBindings);
   fn->setGenerics(genericBindings);
   fn->getFullName(CalleeName);
+
+  SType *ret = fn->getFunctionSType()->getReturnType();
+  std::cout << "new CalleeName: " << CalleeName << std::endl;
+  if (SGenericType *genRet = dynamic_cast<SGenericType*>(ret)) {
+    if (SType *boundRet = genRet->getBinding()) {
+      std::cout << "new concrete return type: ";
+      boundRet->dump();
+      std::cout << std::endl;
+      setSType(boundRet);
+    }
+  }
   fn->FindCalls(calls);
   fn->setGenerics(oldGenericBindings);
 }
@@ -432,12 +459,6 @@ void Call::getGenerics(vector<SType*> &tys) {
       tys.push_back(genericBindings[i]);
 }
 
-SType *Call::getSType() {
-  if (ThisType == NULL)
-    ThisType = getFunc()->getFunctionSType()->getReturnType();
-  return ThisType;
-}
-
 Value *Call::Codegen() {
   vector<Value*> argVals;
 
@@ -564,7 +585,7 @@ Value *Func::Codegen() {
   }
 
   Builder.CreateRet(ret);
-  function->dump();
+  //function->dump();
   verifyFunction(*function);
   TheFPM->run(*function);
 

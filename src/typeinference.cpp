@@ -63,24 +63,34 @@ void If::TypeInfer(TypeInferer &inferer) {
   inferer.eqn(this,Else);
 }
 void Call::TypeInfer(TypeInferer &inferer) {
-  // Match each Arg to the associate Func register.
-  vector<RegisterFunArg*> argRegs;
+  Func *fn;
   if (Closure *cl = dynamic_cast<Closure*>(Callee)) {
-    cl->getArgRegs(argRegs);
-    inferer.ty(this, cl->getFunction()->getFunctionSType()->getReturnType());
-  } else if (Func *fn = dynamic_cast<Func*>(Callee)) {
-    fn->getArgRegs(argRegs);
-    inferer.ty(this, fn->getFunctionSType()->getReturnType());
+    fn = cl->getFunc();
+  } else if (Func *fun = dynamic_cast<Func*>(Callee)) {
+    fn = fun;
   } else {
     std::cerr << "Call to " << CalleeName << " is not function nor closure."
       << std::endl;
     exit(1);
   }
 
-  assert(argRegs.size() == Args.size());
-  for (unsigned i=0, e=Args.size(); i != e; ++i) {
-    inferer.eqn(Args[i], argRegs[i]);
+  for (unsigned i=0, e=Args.size(); i != e; ++i)
     Args[i]->TypeInfer(inferer);
+
+  SFunctionType *funTy = fn->getFunctionSType();
+  SType *retTy = funTy->getReturnType();
+  if (SGenericType *ret = dynamic_cast<SGenericType*>(retTy)) {
+    // Match the return type to one of the input types to the generic.
+    vector<SType*> argTys = funTy->getArgs();
+    for (unsigned i=0, e=argTys.size(); i != e; ++i) {
+      if (argTys[i] == ret) {
+        inferer.eqn(this, Args[i]);
+        break;
+      }
+    }
+  } else {
+    // Match this type to the concrete return type.
+    inferer.ty(this, retTy);
   }
 }
 void Register::TypeInfer(TypeInferer &inferer) {
@@ -181,7 +191,8 @@ void TypeInferer::TypeUnification() {
       tys[eqn.second] = tys[eqn.first];
       noMatchesIn = 0;
     } else*/ if (tys.count(eqn.second) > 0) {
-      tys[eqn.first] = tys[eqn.second];
+      if (tys.count(eqn.first) == 0)
+        tys[eqn.first] = tys[eqn.second];
       noMatchesIn = 0;
     } else {
       es.push_back(eqn);

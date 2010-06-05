@@ -214,7 +214,6 @@ namespace SPL {
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
-      virtual SType *getSType();
       Func* getFunc();
 
       virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
@@ -248,6 +247,8 @@ namespace SPL {
       virtual Value *Codegen();
     };
 
+    // TODO:  we could at least have Func subclass
+    //        Closure, to avoid some dynamic_cast
     class Func: public Expr {
       string Name;
       vector<string>          Generics;

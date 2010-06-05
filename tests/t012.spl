@@ -1,0 +1,9 @@
+
+def id1<A>(x: A): A = { x }
+def id2<B>(x: B): B = { x }
+
+io main(): Int32 = {
+  val x = id2(6);
+  id1(x)
+}
+
