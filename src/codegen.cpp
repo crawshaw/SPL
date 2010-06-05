@@ -333,7 +333,7 @@ Value *Constructor::Codegen() {
 
   Type const *ty = ThisType->getPassType();
 
-  Function *mallocFunc = TheModule->getFunction("malloc");
+  Function *mallocFunc = TheModule->getFunction("GC_malloc");
   Value *mallocArg = ConstantExpr::getSizeOf(ty);
 
   Value *val = TmpB.CreateCall(mallocFunc, mallocArg);
@@ -588,7 +588,7 @@ Value *Func::Codegen() {
   }
 
   Builder.CreateRet(ret);
-  function->dump();
+  //function->dump();
   verifyFunction(*function);
   TheFPM->run(*function);
 
@@ -644,20 +644,19 @@ void File::run() {
     const FunctionType *mallocTy = FunctionType::get(
       Type::getInt8PtrTy(getGlobalContext()),
       vector<const Type*>(1, Type::getInt64Ty(getGlobalContext())), false);
+    const FunctionType *mallocAtomicTy = FunctionType::get(
+      Type::getInt8PtrTy(getGlobalContext()),
+      vector<const Type*>(1, Type::getInt64Ty(getGlobalContext())), false);
 
-    const FunctionType *freeTy = FunctionType::get(
-      Type::getVoidTy(getGlobalContext()),
-      vector<const Type*>(1, Type::getInt8PtrTy(getGlobalContext())), false);
-
-    Function *mallocFunc = module.getFunction("malloc");
+    Function *mallocFunc = module.getFunction("GC_malloc");
     if (mallocFunc == 0)
       mallocFunc = Function::Create(
-        mallocTy, Function::ExternalLinkage, "malloc", TheModule);
+        mallocTy, Function::ExternalLinkage, "GC_malloc", TheModule);
 
-    Function *freeFunc = module.getFunction("free");
-    if (freeFunc == 0)
-      freeFunc = Function::Create(
-        freeTy, Function::ExternalLinkage, "free", TheModule);
+    Function *mallocAtomicFunc = module.getFunction("GC_malloc_atomic");
+    if (mallocAtomicFunc == 0)
+      mallocAtomicFunc = Function::Create(
+        mallocTy, Function::ExternalLinkage, "GC_malloc", TheModule);
   }
 
   std::cout << "PHASE: LambdaLift" << std::endl;

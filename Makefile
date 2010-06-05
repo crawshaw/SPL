@@ -14,7 +14,7 @@ build/grammar.cpp: src/grammar.y
 	bison -o $@ $<
 
 build/spl: build/grammar.o build/codegen.o build/lambdalift.o build/typeinference.o build/stypes.o
-	clang++ -g $^ `llvm-config --ldflags --libs core jit native` -o $@
+	clang++ -g $^ `llvm-config --ldflags --libs core jit native` -lgc -o $@
 
 build/grammar.o: build/grammar.cpp
 	$(CXX) -o $@ $<
