@@ -239,15 +239,12 @@ void Call::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   vector<SType*> oldGenericBindings;
   fn->getGenerics(oldGenericBindings);
   fn->setGenerics(genericBindings);
-  fn->getFullName(CalleeName);
 
+  // Update the CalleeName and return type to match specialization.
+  fn->getFullName(CalleeName);
   SType *ret = fn->getFunctionSType()->getReturnType();
-  std::cout << "new CalleeName: " << CalleeName << std::endl;
   if (SGenericType *genRet = dynamic_cast<SGenericType*>(ret)) {
     if (SType *boundRet = genRet->getBinding()) {
-      std::cout << "new concrete return type: ";
-      boundRet->dump();
-      std::cout << std::endl;
       setSType(boundRet);
     }
   }
@@ -329,20 +326,26 @@ Value *Member::Codegen() {
 }
 
 Value *Constructor::Codegen() {
-  // TODO: heap allocation.
+  // Heap allocation.
   Function *TheFunction = Builder.GetInsertBlock()->getParent();
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
     TheFunction->getEntryBlock().begin());
-  AllocaInst *a = TmpB.CreateAlloca(
-    ThisType->getPassType(), 0, STypeName.c_str());
+
+  Type const *ty = ThisType->getPassType();
+
+  Function *mallocFunc = TheModule->getFunction("malloc");
+  Value *mallocArg = ConstantExpr::getSizeOf(ty);
+
+  Value *val = TmpB.CreateCall(mallocFunc, mallocArg);
+  Value *castVal = TmpB.CreateBitCast(val, PointerType::getUnqual(ty));
 
   for (unsigned i=0, e=Args.size(); i != e; ++i) {
-    Value *gep = TmpB.CreateStructGEP(a, i);
+    Value *gep = TmpB.CreateStructGEP(castVal, i);
     Value *val = Args[i]->Codegen();
     Builder.CreateStore(val, gep);
   }
 
-  return a;
+  return castVal;
 }
 
 Value *Register::Codegen() {
@@ -585,7 +588,7 @@ Value *Func::Codegen() {
   }
 
   Builder.CreateRet(ret);
-  //function->dump();
+  function->dump();
   verifyFunction(*function);
   TheFPM->run(*function);
 
@@ -635,6 +638,27 @@ void File::run() {
   fpm.add(createGVNPass());
   fpm.add(createCFGSimplificationPass());
   */
+
+  std::cout << "PHASE: Init" << std::endl;
+  {
+    const FunctionType *mallocTy = FunctionType::get(
+      Type::getInt8PtrTy(getGlobalContext()),
+      vector<const Type*>(1, Type::getInt64Ty(getGlobalContext())), false);
+
+    const FunctionType *freeTy = FunctionType::get(
+      Type::getVoidTy(getGlobalContext()),
+      vector<const Type*>(1, Type::getInt8PtrTy(getGlobalContext())), false);
+
+    Function *mallocFunc = module.getFunction("malloc");
+    if (mallocFunc == 0)
+      mallocFunc = Function::Create(
+        mallocTy, Function::ExternalLinkage, "malloc", TheModule);
+
+    Function *freeFunc = module.getFunction("free");
+    if (freeFunc == 0)
+      freeFunc = Function::Create(
+        freeTy, Function::ExternalLinkage, "free", TheModule);
+  }
 
   std::cout << "PHASE: LambdaLift" << std::endl;
   LambdaLiftFuncs();
