@@ -1,5 +1,6 @@
 #include "ast.h"
 #include <iostream>
+#include "llvm/Support/Debug.h"
 
 using namespace std;
 
@@ -11,8 +12,7 @@ void File::LambdaLiftFuncs() {
   for (vector<Func*>::const_iterator it=Funcs.begin(); it!=Funcs.end(); it++)
     (*it)->LambdaLift(newFuncs);
 
-  //std::cerr << "Lifted " << newFuncs.size() << " functions." << std::endl;
-
+  DEBUG(dbgs() << "Lifted " << newFuncs.size() << " functions.\n");
   Funcs.insert(Funcs.end(), newFuncs.begin(), newFuncs.end());
 }
 

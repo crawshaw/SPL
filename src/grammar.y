@@ -8,10 +8,10 @@ using namespace std;
 void yyerror(const char *error);
 int yylex();
 
-static std::vector<AST::Func*>      toplevel;
-static std::vector<AST::SType*>     types;
-static std::vector<AST::Class*>     classes;
-static std::vector<AST::Instance*>  instances;
+std::vector<AST::Func*>      toplevel;
+std::vector<AST::SType*>     types;
+std::vector<AST::Class*>     classes;
+std::vector<AST::Instance*>  instances;
 %}
 
 %locations
@@ -153,39 +153,9 @@ instance : INSTANCE IDENT { $$ = NULL; /* TODO */ }
 
 %%
 
-static std::istream *codein;
-static int line;
-static int col;
-
-void usage() {
-  std::cerr << "usage: spl <filename>" << std::endl;
-  exit(1);
-}
-
-int main(int argc, const char* argv[])
-{
-  if (argc != 2)
-    usage();
-
-  std::string fileName(argv[1]);
-  std::ifstream infile(argv[1]);
-  if (!infile.is_open())
-    usage();
-  codein = &infile;
-  line = 1;
-  col = 0;
-
-  int ret = yyparse();
-  if (ret)
-    return ret;
-
-  std::cout << "Parsed, " << toplevel.size() << " functions." << std::endl;
-  AST::File file(fileName, toplevel, types);
-
-  file.run();
-
-  return 0;
-}
+std::istream *codein;
+int line;
+int col;
 
 void yyerror(const char *error)
 {

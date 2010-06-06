@@ -1,15 +1,17 @@
 #include "ast.h"
 
 #include "llvm/LLVMContext.h"
-#include "llvm/ExecutionEngine/ExecutionEngine.h"
-#include "llvm/ExecutionEngine/JIT.h"
+//include "llvm/ExecutionEngine/ExecutionEngine.h"
+//include "llvm/ExecutionEngine/JIT.h"
 #include "llvm/Module.h"
 #include "llvm/PassManager.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetSelect.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/IRBuilder.h"
+#include "llvm/Support/StandardPasses.h"
 
 #include <iostream>
 #include <map>
@@ -25,8 +27,7 @@ namespace SPL { namespace AST {
 
 // TODO: not globals
 static Module *TheModule;
-static FunctionPassManager *TheFPM;
-static ExecutionEngine *TheExecutionEngine;
+//static ExecutionEngine *TheExecutionEngine;
 
 // TODO: pass to Bind() along with NamedExprs.
 map<string,SType*> NamedTypes;
@@ -222,15 +223,6 @@ void Call::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   Func *fn = getFunc();
   getGenerics(genericBindings);
   pair<Func*, vector<SType*> > res(fn, genericBindings);
-  std::cout << "processing call to " << CalleeName << std::endl;
-  std::cout << "--- generic bindings: " << std::endl;
-  for (unsigned i=0, e=genericBindings.size(); i != e; ++i) {
-    if (genericBindings[i] == NULL)
-      std::cout << "NULL" << std::endl;
-    else
-      genericBindings[i]->dump();
-  }
-  std::cout << "---" << std::endl;
 
   if (Util::contains(calls, res))
     return;
@@ -308,17 +300,6 @@ Value *Member::Codegen() {
   SStructType *sty = getSourceSType();
 
   unsigned fieldIndex = sty->getIndex(FieldName);
-  std::cout << "fieldIndex = " << fieldIndex << std::endl;
-  Type const *fieldTy = sty->getType(fieldIndex);
-  std::cout << "fieldTy: ";
-  fieldTy->dump();
-
-  /*
-  Function *TheFunction = Builder.GetInsertBlock()->getParent();
-  IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
-    TheFunction->getEntryBlock().begin());
-  AllocaInst *a = TmpB.CreateAlloca(fieldTy, 0, FieldName);
-  */
 
   Value *src = Source->Codegen();
   Value *gep = Builder.CreateStructGEP(src, fieldIndex);
@@ -445,12 +426,8 @@ void Call::getGenerics(vector<SType*> &tys) {
   vector<SType*> callTypes;
   vector<Expr*> args;
   getAllArgs(args);
-  std::cout << "getAllArgs, size=" << args.size() << std::endl;
-  for (unsigned i=0, e=args.size(); i != e; ++i) {
-    args[i]->getSType()->dump();
-    std::cout << std::endl;
+  for (unsigned i=0, e=args.size(); i != e; ++i)
     callTypes.push_back(args[i]->getSType());
-  }
 
   vector<SType*> genericBindings;
   getFunc()->MatchGenerics(callTypes, genericBindings);
@@ -519,8 +496,8 @@ Function *Func::getFunction() {
     Function::Create(ft, Function::ExternalLinkage, name, TheModule);
 
   if (function->getName() != name) {
-    std::cout << "Function redeclaration" << std::endl;
-    return 0;
+    std::cerr << "Function redeclaration: `" << name << "'\n";
+    exit(1);
   }
 
   unsigned idx = 0;
@@ -590,7 +567,6 @@ Value *Func::Codegen() {
   Builder.CreateRet(ret);
   //function->dump();
   verifyFunction(*function);
-  TheFPM->run(*function);
 
   return function;
 }
@@ -604,7 +580,6 @@ void Func::MatchGenerics(
   for (unsigned i=0, e=Args.size(); i != e; ++i)
     if (SGenericType* gen = dynamic_cast<SGenericType*>(ArgSTypes[i]))
       matchedGenerics[gen] = callTypes[i];
-  std::cout << "GenericPlaceholders.size = " << GenericPlaceholders.size() << std::endl;
   for (unsigned i=0, e=GenericPlaceholders.size(); i != e; ++i)
     genericBindings.push_back(matchedGenerics[GenericPlaceholders[i]]);
 
@@ -616,30 +591,47 @@ void Func::MatchGenerics(
         genericBindings[i] = NULL;
 }
 
-void File::run() {
-  InitializeNativeTarget();
+File::File(string &name, const vector<Func*> &funcs, const vector<SType*> &tys)
+  : Name(name), Funcs(funcs), STypes(tys), FileModule(name, getGlobalContext()) {}
+
+  /*
+TODO: in JIT pass experiment with:
+
+  FunctionPassManager fpm(&FileModule);
+  fpm.add(new TargetData(*TheExecutionEngine->getTargetData()));
+  fpm.doInitialization();
+  iplist<Function> &fns = TheModule->getFunctionList();
+  for (iplist<Function>::iterator it = fns.begin(); it != fns.end(); it++)
+    fpm.run(*it);
+
+*/
+
+void File::optimize() {
+  FunctionPassManager fpm(&FileModule);
+  fpm.doInitialization();
+  createStandardFunctionPasses(&fpm, 2);
+  iplist<Function> &fns = TheModule->getFunctionList();
+  for (iplist<Function>::iterator it = fns.begin(); it != fns.end(); it++)
+    fpm.run(*it);
+
+  PassManager pm;
+  createStandardModulePasses(&pm, 2, false, false, true, true, false, NULL);
+  pm.run(FileModule);
+}
+
+void File::compile() {
+  //InitializeNativeTarget();
   string errStr;
-  Module module("my module", getGlobalContext());
-  TheModule = &module;
+  TheModule = &FileModule;
+  /*
   TheExecutionEngine = EngineBuilder(TheModule).setErrorStr(&errStr).create();
   if (!TheExecutionEngine) {
     std::cerr << "ExecutionEngine: " << errStr << std::endl;
     exit(1);
   }
-  FunctionPassManager fpm(TheModule);
-  TheFPM = &fpm;
-
-  fpm.add(new TargetData(*TheExecutionEngine->getTargetData()));
-  fpm.doInitialization();
-  /*
-  fpm.add(createPromoteMemoryToRegisterPass());
-  fpm.add(createInstructionCombiningPass());
-  fpm.add(createReassociatePass());
-  fpm.add(createGVNPass());
-  fpm.add(createCFGSimplificationPass());
   */
 
-  std::cout << "PHASE: Init" << std::endl;
+  DEBUG(dbgs() << "PHASE: Init\n");
   {
     const FunctionType *mallocTy = FunctionType::get(
       Type::getInt8PtrTy(getGlobalContext()),
@@ -648,21 +640,21 @@ void File::run() {
       Type::getInt8PtrTy(getGlobalContext()),
       vector<const Type*>(1, Type::getInt64Ty(getGlobalContext())), false);
 
-    Function *mallocFunc = module.getFunction("GC_malloc");
+    Function *mallocFunc = TheModule->getFunction("GC_malloc");
     if (mallocFunc == 0)
       mallocFunc = Function::Create(
         mallocTy, Function::ExternalLinkage, "GC_malloc", TheModule);
 
-    Function *mallocAtomicFunc = module.getFunction("GC_malloc_atomic");
+    Function *mallocAtomicFunc = TheModule->getFunction("GC_malloc_atomic");
     if (mallocAtomicFunc == 0)
       mallocAtomicFunc = Function::Create(
         mallocTy, Function::ExternalLinkage, "GC_malloc", TheModule);
   }
 
-  std::cout << "PHASE: LambdaLift" << std::endl;
+  DEBUG(dbgs() << "PHASE: LambdaLift\n");
   LambdaLiftFuncs();
 
-  std::cout << "PHASE: BindTypes" << std::endl;
+  DEBUG(dbgs() << "PHASE: BindTypes\n");
   NamedTypes["Bool"]  = new SBool();
   NamedTypes["Int8"]  = new Int8();
   NamedTypes["Int16"] = new Int16();
@@ -673,7 +665,6 @@ void File::run() {
     NamedTypes[(*i)->getName()] = *i;
   }
   for (vector<SType*>::const_iterator i=STypes.begin(); i!=STypes.end(); i++) {
-    std::cerr << "Binding " << (*i)->getName() << std::endl;
     vector<string> ResolutionPath;
     (*i)->Bind(ResolutionPath, NamedTypes);
   }
@@ -686,26 +677,28 @@ void File::run() {
   }
 
   // PHASE: BindNames.
-  std::cout << "PHASE: BindNames" << std::endl;
+  DEBUG(dbgs() << "PHASE: BindNames\n");
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
     (*i)->Bind(NamedExprs);
 
   // PHASE: Type inference.
-  std::cout << "PHASE: TypeInference" << std::endl;
-  multimap<Expr*,Expr*> eqns;
-  map<Expr*,SType*> tys;
-  for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++) {
-    //std::cerr << "Type inference on: " << (*i)->getName() << std::endl;
-    TypeInferer inferer;
-    (*i)->TypeInfer(inferer);
-    inferer.TypeUnification();
-    inferer.TypePopulation();
+  {
+    DEBUG(dbgs() << "PHASE: TypeInference\n");
+    for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++) {
+      //std::cerr << "Type inference on: " << (*i)->getName() << std::endl;
+      TypeInferer inferer;
+      (*i)->TypeInfer(inferer);
+      inferer.TypeUnification();
+      inferer.TypePopulation();
+    }
   }
 
   // PHASE: Specialization Codegen
   {
-    std::cout << "PHASE: Specialization Codegen" << std::endl;
+    DEBUG(dbgs() << "PHASE: Specialization Codegen\n");
 
+    // Generate a call graph (using `FindCalls') from every non-generic
+    // function, use this to generate specialized versions of generics.
     vector<pair<Func*,vector<SType*> > > calls;
     for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
       if (!(*i)->isGeneric())
@@ -724,18 +717,15 @@ void File::run() {
   }
 
   // PHASE: Code generation
-  std::cout << "PHASE: Codegen" << std::endl;
+  DEBUG(dbgs() << "PHASE: Codegen\n");
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++) {
     // TODO: pass in the LLVM state as an argument.
     (*i)->Codegen();
   }
 
-  std::cout << "LLVM IR dump:" << std::endl;
-
-  TheModule->dump();
-
+  /*
   // Execute the function `main'.
-  Function *f = module.getFunction("main");
+  Function *f = TheModule->getFunction("main");
   if (f == NULL) {
     std::cout << "main is not defined!" << std::endl;
     exit(1);
@@ -743,6 +733,7 @@ void File::run() {
   void *fptr = TheExecutionEngine->getPointerToFunction(f);
   int32_t (*fp)() = (int32_t (*)())(intptr_t)fptr;
   std::cout << "Result: " << fp() << std::endl;
+  */
 }
 
 }; };

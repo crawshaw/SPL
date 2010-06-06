@@ -1,5 +1,6 @@
 #include "llvm/DerivedTypes.h"
 #include "llvm/Support/IRBuilder.h"
+#include "llvm/Module.h"
 
 #include <string>
 #include <vector>
@@ -9,6 +10,7 @@
 
 namespace SPL {
   namespace AST {
+    using llvm::Module;
     using llvm::AllocaInst;
     using llvm::Value;
     using llvm::Type;
@@ -445,16 +447,21 @@ namespace SPL {
     class Class;
     class Instance;
 
+    // TODO: this is really a 'program', as when we
+    // do have multiple files, they will all be merged
+    // into just one of these classes.
     class File {
       string Name;
       vector<Func*> Funcs;
       vector<SType*> STypes;
+      void LambdaLiftFuncs();
+      Module FileModule;
 
     public:
-      File(string &name, const vector<Func*> &funcs, const vector<SType*> &tys)
-        : Name(name), Funcs(funcs), STypes(tys) {}
-      void LambdaLiftFuncs();
-      void run();
+      File(string &name, const vector<Func*> &funcs, const vector<SType*> &tys);
+      void compile();
+      void optimize();
+      Module &getModule() { return FileModule; }
     };
   };
 
