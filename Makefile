@@ -6,9 +6,12 @@ REPL_OBJS := \
 
 CXX := clang++ `llvm-config --cxxflags` -frtti -I src -g -c
 
-test: build/splc
-	@echo 'Running tests:'
-	@for f in `ls tests/*.spl`; do echo "-----"; echo "  $$f"; ./$^ $$f; done
+test: build/splc build/splvm
+	@echo 'Running tests'
+	@for f in `ls tests/*.spl`; do \
+    echo "----- $$f -----"; \
+    ./build/splc $$f && ./build/splvm junk.bc; \
+  done
 
 build/grammar.cpp: src/ast.h
 src/codegen.cpp: src/ast.h
@@ -24,7 +27,7 @@ build/splc: $(COMPILER_OBJS:%=build/%)
 	clang++ -g $^ `llvm-config --ldflags --libs` -o $@
 
 build/splvm: $(VM_OBJS:%=build/%)
-	clang++ -g $^ `llvm-config --ldflags --libs core jit native` -lgc -o $@
+	clang++ -g $^ `llvm-config --ldflags --libs core jit native bitreader` -lgc -o $@
 
 build/grammar.o: build/grammar.cpp
 	$(CXX) -o $@ $<

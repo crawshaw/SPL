@@ -1,6 +1,7 @@
 #include "llvm/DerivedTypes.h"
 #include "llvm/Support/IRBuilder.h"
 #include "llvm/Module.h"
+#include "llvm/Support/Debug.h"
 
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@ namespace SPL {
     using llvm::Value;
     using llvm::Type;
     using llvm::Function;
+    using llvm::dbgs;
     using std::map;
     using std::multimap;
     using std::vector;

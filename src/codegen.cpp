@@ -1,16 +1,9 @@
 #include "ast.h"
 
 #include "llvm/LLVMContext.h"
-//include "llvm/ExecutionEngine/ExecutionEngine.h"
-//include "llvm/ExecutionEngine/JIT.h"
-#include "llvm/Module.h"
 #include "llvm/PassManager.h"
 #include "llvm/Analysis/Verifier.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetSelect.h"
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/IRBuilder.h"
 #include "llvm/Support/StandardPasses.h"
 
 #include <iostream>
@@ -27,7 +20,6 @@ namespace SPL { namespace AST {
 
 // TODO: not globals
 static Module *TheModule;
-//static ExecutionEngine *TheExecutionEngine;
 
 // TODO: pass to Bind() along with NamedExprs.
 map<string,SType*> NamedTypes;
@@ -620,16 +612,8 @@ void File::optimize() {
 }
 
 void File::compile() {
-  //InitializeNativeTarget();
   string errStr;
   TheModule = &FileModule;
-  /*
-  TheExecutionEngine = EngineBuilder(TheModule).setErrorStr(&errStr).create();
-  if (!TheExecutionEngine) {
-    std::cerr << "ExecutionEngine: " << errStr << std::endl;
-    exit(1);
-  }
-  */
 
   DEBUG(dbgs() << "PHASE: Init\n");
   {
@@ -722,18 +706,6 @@ void File::compile() {
     // TODO: pass in the LLVM state as an argument.
     (*i)->Codegen();
   }
-
-  /*
-  // Execute the function `main'.
-  Function *f = TheModule->getFunction("main");
-  if (f == NULL) {
-    std::cout << "main is not defined!" << std::endl;
-    exit(1);
-  }
-  void *fptr = TheExecutionEngine->getPointerToFunction(f);
-  int32_t (*fp)() = (int32_t (*)())(intptr_t)fptr;
-  std::cout << "Result: " << fp() << std::endl;
-  */
 }
 
 }; };

@@ -3,7 +3,6 @@
 #include <fstream>
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace SPL;
@@ -44,7 +43,6 @@ int main(int argc, char** argv)
   if (ret)
     return ret;
 
-  std::cout << "Parsed, " << toplevel.size() << " functions." << std::endl;
   AST::File file(fileName, toplevel, types);
 
   file.compile();
