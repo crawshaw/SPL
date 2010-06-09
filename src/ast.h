@@ -77,6 +77,17 @@ namespace SPL {
       //virtual Type const *getType();
     };
 
+    class StringLiteral: public Expr {
+      const std::string Str;
+    public:
+      StringLiteral(std::string &s): Str(s) {}
+      const std::string &get() { return Str; }
+      virtual void Bind(map<string, Expr*> &);
+      virtual void TypeInfer(TypeInferer &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
+      virtual Value *Codegen();
+    };
+
     class Variable : public Expr {
       string Name;
       Expr *Binding;
@@ -139,10 +150,15 @@ namespace SPL {
     class Eq : public BinaryOp { // TODO replace builtin == with Eq typeclass
     public:
       Eq(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs) {}
-      virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
       virtual Value *Codegen();
-      //virtual Type const *getType();
+    };
+    class JoinString: public BinaryOp {
+    public:
+      JoinString(Expr &lhs, Expr &rhs)
+        : BinaryOp(lhs, rhs) {}
+      virtual void TypeInfer(TypeInferer &);
+      virtual Value *Codegen();
     };
 
     class Seq : public BinaryOp {
@@ -352,15 +368,18 @@ namespace SPL {
     };
 
     class SType {
+      static map<string,SType*> BuiltinsMap;
     protected:
       const string Name;
     public:
       SType(const string &name): Name(name) {}
-      virtual void Bind(vector<string> &, map<string, SType*> &) {}
+      virtual void Bind(vector<string> &, const map<string, SType*> &) {}
       virtual Type const *getType() = 0;
       virtual Type const *getPassType() { return getType(); }
       virtual void dump() = 0;
       const string getName() { return Name; }
+
+      static const map<string,SType*> &Builtins();
     };
 
     class SPrimitive : public SType {
@@ -383,19 +402,21 @@ namespace SPL {
     // TODO: common superclass for SStructType and SUnionType.
 
     class SStructType : public SType {
+    protected:
       vector<string>  ElementNames;
       vector<string>  ElementSTypeNames;
       vector<SType*>  ElementSTypes;
       Type * ThisType;
     public:
-      SStructType(string &name, const vector<pair<string,string*>*> &els)
+      SStructType(const string &name): SType(name), ThisType(NULL) {}
+      SStructType(const string &name, const vector<pair<string,string*>*> &els)
           : SType(name), ThisType(NULL) {
         for (unsigned i=0, e=els.size(); i != e; ++i) {
           ElementNames.push_back(els[i]->first);
           ElementSTypeNames.push_back(string(*els[i]->second));
         }
       }
-      virtual void Bind(vector<string> &, map<string, SType*> &);
+      virtual void Bind(vector<string> &, const map<string, SType*> &);
       virtual Type const *getType();
       virtual Type const *getPassType();
       virtual void dump();
@@ -406,6 +427,35 @@ namespace SPL {
         argTys.assign(ElementSTypes.begin(), ElementSTypes.end());
       }
       bool isUnboxed() { return false; /* TODO */ }
+    };
+
+    // As these are general-purpose arrays, their size
+    // is not known until runtime. Therefore we must
+    // represent them with as an llvm::StructType
+    // containing an llvm::ArrayType with NumElements=0
+    // and an Int32 containing the size.
+    //
+    // TODO:  this struct-with-array double pointer
+    //        is conceptually simple but an unnecessary
+    //        cache hit that can be compiled out by
+    //        either hiding the size in or 'behind' the
+    //        first element. Learn more about LLVM
+    //        before doing this.
+    class SArray : public SStructType {
+    public:
+      SArray(SType *);
+      virtual void Bind(vector<string> &, const map<string, SType*> &);
+      virtual void dump();
+    };
+
+    class SString : public SArray {
+      vector<string>  ElementNames;
+      vector<string>  ElementSTypeNames;
+      vector<SType*>  ElementSTypes;
+      Type * ThisType;
+    public:
+      SString(): SArray(new Int8()) {}
+      virtual void dump();
     };
 
     class SFunctionType : public SType {

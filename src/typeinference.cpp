@@ -9,6 +9,14 @@ extern map<string,SType*> NamedTypes; // TODO: hackish nonsense
 void Number::TypeInfer(TypeInferer &inferer) {
   inferer.ty(this, new Int32());
 }
+void StringLiteral::TypeInfer(TypeInferer &inferer) {
+  inferer.ty(this, new SString());
+}
+void JoinString::TypeInfer(TypeInferer &inferer) {
+  inferer.ty(this, new SString());
+  LHS->TypeInfer(inferer);
+  RHS->TypeInfer(inferer);
+}
 void Variable::TypeInfer(TypeInferer &inferer) {
   inferer.eqn(this, Binding);
 }

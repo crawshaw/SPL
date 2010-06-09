@@ -24,6 +24,19 @@ static Module *TheModule;
 // TODO: pass to Bind() along with NamedExprs.
 map<string,SType*> NamedTypes;
 
+map<string,SType*> SType::BuiltinsMap;
+const map<string,SType*> &SType::Builtins() {
+  if (BuiltinsMap.size() == 0) {
+    BuiltinsMap["Bool"]  = new SBool();
+    BuiltinsMap["Int8"]  = new Int8();
+    BuiltinsMap["Int16"] = new Int16();
+    BuiltinsMap["Int32"] = new Int32();
+    BuiltinsMap["Int64"] = new Int64();
+    BuiltinsMap["String"] = new SString();
+  }
+  return BuiltinsMap;
+}
+
 
 /////////////////////////////////////////////////////////////////////
 
@@ -55,8 +68,8 @@ SStructType *Member::getSourceSType() {
 /////////////////////////////////////////////////////////////////////
 
 
-void Number::Bind(map<string, Expr*> &) {
-}
+void Number::Bind(map<string, Expr*> &) { }
+void StringLiteral::Bind(map<string, Expr*> &) { }
 
 void Variable::Bind(map<string, Expr*> &NamedExprs) {
   Binding = NamedExprs[Name];
@@ -71,11 +84,6 @@ void UnaryOp::Bind(map<string, Expr*> &NamedExprs) {
 }
 
 void BinaryOp::Bind(map<string, Expr*> &NamedExprs) {
-  LHS->Bind(NamedExprs);
-  RHS->Bind(NamedExprs);
-}
-
-void Eq::Bind(map<string, Expr*> &NamedExprs) {
   LHS->Bind(NamedExprs);
   RHS->Bind(NamedExprs);
 }
@@ -187,6 +195,7 @@ void Func::Bind(map<string, Expr*> &NamedExprs) {
 
 
 void Number::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) { }
+void StringLiteral::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) { }
 void Variable::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) { }
 void UnaryOp::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   SubExpr->FindCalls(calls);
@@ -282,6 +291,41 @@ Value *Multiply::Codegen() {
 
 Value *Eq::Codegen() {
   return Builder.CreateICmpEQ(LHS->Codegen(), RHS->Codegen(), "eqtmp");
+}
+
+Value *StringLiteral::Codegen() {
+
+  // Heap allocate the structure containing the size.
+  Function *TheFunction = Builder.GetInsertBlock()->getParent();
+  IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
+    TheFunction->getEntryBlock().begin());
+
+  // TODO: are we repeating ourselves here when the same string is repeated?
+  Value *glb = Builder.CreateGlobalString(Str.c_str());
+  glb = TmpB.CreateBitCast(glb, PointerType::getUnqual(
+        ArrayType::get(Type::getInt8Ty(getGlobalContext()), 0)));
+
+  Function *mallocFunc = TheModule->getFunction("GC_malloc");
+  Type const *ty = ThisType->getPassType();
+  Value *mallocArg = ConstantExpr::getSizeOf(ty);
+
+  Value *val = TmpB.CreateCall(mallocFunc, mallocArg);
+  Value *castVal = TmpB.CreateBitCast(val, PointerType::getUnqual(ty));
+
+  Value *sizeGep = TmpB.CreateStructGEP(castVal, 0);
+  ConstantInt *size =
+    ConstantInt::getSigned(Type::getInt32Ty(getGlobalContext()), Str.length());
+  Builder.CreateStore(size, sizeGep);
+
+  Value *ptrGep = TmpB.CreateStructGEP(castVal, 1);
+  Builder.CreateStore(glb, ptrGep);
+
+  return castVal;
+}
+
+Value *JoinString::Codegen() {
+  // TODO: malloc a new string
+  return NULL;
 }
 
 Value *Seq::Codegen() {
@@ -532,6 +576,7 @@ void Func::clearGenerics() {
 
 Value *Func::Codegen() {
   Function *function = getFunction();
+  DEBUG(dbgs() << "Codegen: " << Name << "\n");
 
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(getGlobalContext(), "entry", function);
@@ -557,7 +602,8 @@ Value *Func::Codegen() {
   }
 
   Builder.CreateRet(ret);
-  //function->dump();
+  if (llvm::DebugFlag)
+    function->dump();
   verifyFunction(*function);
 
   return function;
@@ -639,11 +685,15 @@ void File::compile() {
   LambdaLiftFuncs();
 
   DEBUG(dbgs() << "PHASE: BindTypes\n");
+  NamedTypes = SType::Builtins();
+  /*
   NamedTypes["Bool"]  = new SBool();
   NamedTypes["Int8"]  = new Int8();
   NamedTypes["Int16"] = new Int16();
   NamedTypes["Int32"] = new Int32();
   NamedTypes["Int64"] = new Int64();
+  NamedTypes["String"] = new SString();
+  */
   for (vector<SType*>::const_iterator i=STypes.begin(); i!=STypes.end(); i++) {
     // TODO check for overloading primitive NamedTypes.count((*i)->getName())
     NamedTypes[(*i)->getName()] = *i;
@@ -651,6 +701,8 @@ void File::compile() {
   for (vector<SType*>::const_iterator i=STypes.begin(); i!=STypes.end(); i++) {
     vector<string> ResolutionPath;
     (*i)->Bind(ResolutionPath, NamedTypes);
+    if (llvm::DebugFlag)
+      (*i)->getType()->dump();
   }
   // Load top-level function names into binding scope.
   map<string, Expr*> NamedExprs;

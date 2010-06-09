@@ -15,7 +15,7 @@ std::vector<AST::Instance*>  instances;
 %}
 
 %locations
-%token IDENT TIDENT NUMBER
+%token IDENT TIDENT NUMBER STRING
 
 %union {
   AST::Expr *exp;
@@ -33,6 +33,7 @@ std::vector<AST::Instance*>  instances;
 
 %type <exp>       exp
 %type <value>     NUMBER
+%type <ident>     STRING
 %type <ident>     IDENT
 %type <ident>     TIDENT
 %type <args>      args
@@ -60,6 +61,7 @@ std::vector<AST::Instance*>  instances;
 %token CLASS
 %token INSTANCE
 %token EQ "=="
+%token PP "++"
 %token '='
 %token '('
 %token ')'
@@ -82,9 +84,11 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | exp ';' exp { $$ = new AST::Seq(*$1, *$3); }
     | exp '.' IDENT { $$ = new AST::Member(*$1, *$3); }
     | exp EQ  exp { $$ = new AST::Eq(*$1, *$3); }
+    | exp PP  exp { $$ = new AST::JoinString(*$1, *$3); }
     | '{' exp '}' { $$ = $2; }
     | IDENT       { $$ = new AST::Variable(*$1); }
     | NUMBER      { $$ = new AST::Number($1); }
+    | STRING      { $$ = new AST::StringLiteral(*$1); }
     | IF exp THEN exp ELSE exp  { $$ = new AST::If(*$2, *$4, *$6); }
     | TK_VAL IDENT '=' exp ';' exp { $$ = new AST::Binding(*$2, *$4, *$6); }
     | IDENT '(' callargs ')' { $$ = new AST::Call(*$1, *$3); }
@@ -180,7 +184,7 @@ bool isaspecial(int ch) {
     case '[':
     case ']':
     case '.':
-    case '+': // TODO: remove these special cases, treat as identifiers
+    //case '+': // TODO: remove these special cases, treat as identifiers
     case '-':
     case '*':
     case '<':
@@ -244,6 +248,26 @@ int yylex() {
     return yylex();
   }
 
+  // String literals.
+  if (LastChar == '"') {
+    std::string *str = new std::string();
+    while ((LastChar = codeinget()) != '"') {
+      assert(LastChar != EOF); // Unexpected EOF: expected string literal terminator.
+      if (LastChar == '\\') {
+        switch (codeinget()) {
+          case 'n': *str += "\n"; break;
+          case 'r': *str += "\r"; break;
+          case 't': *str += "\t"; break;
+          case '"': *str += "\""; break;
+        }
+      } else {
+        *str += LastChar;
+      }
+    }
+    yylval.ident = str;
+    return STRING;
+  }
+
   if (LastChar == EOF)
     return -1;
 
@@ -253,6 +277,7 @@ int yylex() {
   // Collect until whitespace.
   std::string StrVal = "";
   StrVal += LastChar;
+  // TODO: Support a+b as Plus('a', 'b'), not Name("a+b"). Same with '='.
   while (!isspace(codein->peek()) && !isaspecial(codein->peek()))
     StrVal += codeinget();
   yylloc.last_line = line;
@@ -272,6 +297,8 @@ int yylex() {
   if (StrVal == "instance") return INSTANCE;
   if (StrVal == "==") return EQ;
   if (StrVal == "=") return '=';
+  if (StrVal == "++") return PP;
+  if (StrVal == "+") return '+';
 
   yylval.ident = new std::string(StrVal);
   if (StrVal[0] >= 'A' && StrVal[0] <= 'Z')
