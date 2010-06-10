@@ -9,6 +9,7 @@ void yyerror(const char *error);
 int yylex();
 
 std::vector<AST::Func*>      toplevel;
+std::vector<AST::Extern*>    externs;
 std::vector<AST::SType*>     types;
 std::vector<AST::Class*>     classes;
 std::vector<AST::Instance*>  instances;
@@ -20,6 +21,7 @@ std::vector<AST::Instance*>  instances;
 %union {
   AST::Expr *exp;
   AST::Func *fun;
+  AST::Extern *ext;
   int value;
   string *ident;
   vector<pair<string,string*>*> *args;
@@ -39,18 +41,22 @@ std::vector<AST::Instance*>  instances;
 %type <args>      args
 %type <callargs>  callargs
 %type <fun>       fun
+%type <exp>       EXTERN
+%type <ext>       extern
 %type <type>      sstruct
 %type <type>      sunion
 %type <cls>       class
 %type <instance>  instance
 %type <templates> templates
 %type <templates> templateSet
+%type <templates> targs
 %type <purity>    funDef
 
 // TODO: add TK_
 %token DEF
 %token IO
 %token IMP
+%token EXTERN
 %token VAR
 %token TK_VAL
 %token IF
@@ -73,6 +79,7 @@ std::vector<AST::Instance*>  instances;
 
 top :
     | fun top       { toplevel.push_back($1); }
+    | extern top    { externs.push_back($1); }
     | sstruct top   { types.push_back($1); }
     | sunion top    { types.push_back($1); }
     | class top     { classes.push_back($1); }
@@ -108,6 +115,8 @@ fun : funDef IDENT templateSet '(' args ')' ':' TIDENT '=' '{' exp '}' {
     }
     */
 
+extern : EXTERN IDENT '(' targs ')' ':' TIDENT { $$ = new AST::Extern(*$2,*$4,*$7); }
+
 funDef : DEF  { $$ = AST::Pure }
        | IO   { $$ = AST::FunIO }
        | IMP  { $$ = AST::Impure }
@@ -118,6 +127,16 @@ templateSet : { $$ = new vector<string>(); }
 templates : { $$ = new vector<string>(); }
           | templates ',' TIDENT { $1->push_back(*$3); $$ = $1; }
           | TIDENT { $$ = new vector<string>(); $$->push_back(*$1); }
+
+targs : { $$ = new vector<string>(); }
+      | TIDENT {
+        $$ = new vector<string>();
+        $$->push_back(*$1);
+      }
+      | targs ',' TIDENT {
+        $1->push_back(*$3);
+        $$ = $1;
+      }
 
 args  : {$$ = new vector<pair<string,string*>*>(); }
       | IDENT ':' TIDENT {
@@ -286,6 +305,7 @@ int yylex() {
   if (StrVal == "def") return DEF;
   if (StrVal == "io")  return IO;
   if (StrVal == "imp") return IMP;
+  if (StrVal == "extern") return EXTERN;
   if (StrVal == "var") return VAR;
   if (StrVal == "val") return TK_VAL;
   if (StrVal == "if")   return IF;

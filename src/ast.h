@@ -288,6 +288,20 @@ namespace SPL {
     vector<AllocaInst*> *createArgAllocas();
 
     public:
+      // XXX what a mess.
+      Func(const string &name,
+          const vector<string> &argstys,
+          const string &retsty):
+          Name(name), GenericsAreBound(false),
+          RetSTypeName(&retsty), RetSType(NULL),
+          Body(NULL), Context(NULL),
+          Pureness(FunIO) {
+        for (unsigned i=0, e=argstys.size(); i!=e; ++i){
+          Args.push_back("$");
+          ArgSTypeNames.push_back(new string(argstys[i]));
+        }
+      }
+
       Func(const string &name,
           const vector<string> &generics,
           const vector<pair<string,string*>*> &args,
@@ -322,7 +336,7 @@ namespace SPL {
       virtual void RewriteBinding(string &OldName, string &NewName);
       SFunctionType *getFunctionSType();
       void getFullName(string &fnName);
-      Function *getFunction();
+      virtual Function *getFunction();
       vector<string> &getArgNames() { return Args; }
       void getArgRegs(vector<RegisterFunArg*> &args) {
         args.insert(args.end(), ArgRegs.begin(), ArgRegs.end());
@@ -333,6 +347,18 @@ namespace SPL {
       void clearGenerics();
       void MatchGenerics(const vector<SType*> &callTypes,
           vector<SType*> &genericBindings);
+    };
+
+    class Extern: public Func {
+    public:
+      Extern(
+          const string &name, 
+          const vector<string> &args,
+          const string &retSType):
+          Func(name, args, retSType) {}
+
+      virtual Function *getFunction();
+      virtual Value *Codegen() { return getFunction(); }
     };
 
     class Closure: public Expr {
@@ -448,7 +474,10 @@ namespace SPL {
       virtual void dump();
     };
 
+    // Stored as { i32, [ 0 x i8]* }*, with the strings
+    // also NULL-terminated for easy C interop.
     class SString : public SArray {
+      static SString *Singleton;
       vector<string>  ElementNames;
       vector<string>  ElementSTypeNames;
       vector<SType*>  ElementSTypes;
@@ -456,6 +485,12 @@ namespace SPL {
     public:
       SString(): SArray(new Int8()) {}
       virtual void dump();
+
+      static SString *get() {
+        if (Singleton == NULL)
+          Singleton = new SString();
+        return Singleton;
+      }
     };
 
     class SFunctionType : public SType {
@@ -505,12 +540,16 @@ namespace SPL {
     class File {
       string Name;
       vector<Func*> Funcs;
+      vector<Extern*> Externs;
       vector<SType*> STypes;
       void LambdaLiftFuncs();
       Module FileModule;
 
     public:
-      File(string &name, const vector<Func*> &funcs, const vector<SType*> &tys);
+      File(string &name,
+          const vector<Func*> &funcs,
+          const vector<Extern*> &externs,
+          const vector<SType*> &tys);
       void compile();
       void optimize();
       Module &getModule() { return FileModule; }

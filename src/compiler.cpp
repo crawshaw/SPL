@@ -11,6 +11,7 @@ namespace cl=llvm::cl;
 extern int yyparse();
 extern std::istream *codein;
 extern std::vector<AST::Func*>      toplevel;
+extern std::vector<AST::Extern*>    externs;
 extern std::vector<AST::SType*>     types;
 extern int line;
 extern int col;
@@ -43,7 +44,7 @@ int main(int argc, char** argv)
   if (ret)
     return ret;
 
-  AST::File file(fileName, toplevel, types);
+  AST::File file(fileName, toplevel, externs, types);
 
   file.compile();
 

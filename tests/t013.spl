@@ -1,0 +1,7 @@
+extern print(String): Int32
+io main(): Int32 = {
+  val x = "hello world\n";
+  print(x);
+  print("this is sprint talking\n");
+  0
+}

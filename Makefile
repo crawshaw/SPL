@@ -1,10 +1,11 @@
 COMPILER_OBJS := \
   grammar.o codegen.o lambdalift.o typeinference.o stypes.o compiler.o
-VM_OBJS := vm.o
+VM_OBJS := print.o vm.o
 REPL_OBJS := \
   grammar.o codegen.o lambdalift.o typeinference.o stypes.o
 
-CXX := clang++ `llvm-config --cxxflags` -frtti -I src -g -c
+CXX := clang++
+CXXFLAGS := `llvm-config --cxxflags` -frtti -I src -g -c
 
 test: build/splc build/splvm
 	@echo 'Running tests'
@@ -24,15 +25,22 @@ build/grammar.cpp: src/grammar.y
 	bison -o $@ $<
 
 build/splc: $(COMPILER_OBJS:%=build/%)
-	clang++ -g $^ `llvm-config --ldflags --libs` -o $@
+	$(CXX) -g $^ `llvm-config --ldflags --libs` -o $@
 
 build/splvm: $(VM_OBJS:%=build/%)
-	clang++ -g $^ `llvm-config --ldflags --libs core jit native bitreader` -lgc -o $@
+	$(CXX) -g -ldl $^ `llvm-config --ldflags --libs core jit native bitreader` -lgc -o $@
 
 build/grammar.o: build/grammar.cpp
-	$(CXX) -o $@ $<
+	$(CXX) $(CXXFLAGS) -o $@ $<
 build/%.o: src/%.cpp
-	$(CXX) -o $@ $<
+	$(CXX) $(CXXFLAGS) -o $@ $<
+build/%.bc: src/%.ll
+	llvm-as -o $@ $<
+
+build/%.s: src/%.ll
+	llc -o $@ $< 
+build/%.o: build/%.s
+	$(CXX) -c -o $@ $<
 
 clean:
 	rm -rf build

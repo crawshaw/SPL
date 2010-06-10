@@ -181,7 +181,8 @@ void Func::Bind(map<string, Expr*> &NamedExprs) {
     NamedExprs[Args[i]] = reg;
   }
 
-  Body->Bind(NamedExprs);
+  if (Body)
+    Body->Bind(NamedExprs);
 
   for (unsigned i=0, e=Args.size(); i != e; ++i)
     NamedExprs[Args[i]] = oldBindings[i];
@@ -245,7 +246,8 @@ void Call::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   fn->setGenerics(oldGenericBindings);
 }
 void Func::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
-  Body->FindCalls(calls);
+  if (Body)
+    Body->FindCalls(calls);
 }
 void Closure::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   // TODO: what about the ActivationRecord?
@@ -329,7 +331,14 @@ Value *JoinString::Codegen() {
 }
 
 Value *Seq::Codegen() {
-  return NULL;
+  Function *TheFunction = Builder.GetInsertBlock()->getParent();
+  IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
+    TheFunction->getEntryBlock().begin());
+  AllocaInst *Alloca = TmpB.CreateAlloca(LHS->getType(), 0);
+  Value *val = LHS->Codegen();
+  Builder.CreateStore(val, Alloca);
+
+  return RHS->Codegen();
 }
 
 Value *Member::Codegen() {
@@ -513,6 +522,15 @@ Value *Closure::Codegen() {
   return FuncRef->getFunction();
 }
 
+Function *Extern::getFunction() {
+  Function *func = TheModule->getFunction(GetName());
+  if (func == NULL) {
+    FunctionType const *ft = getFunctionSType()->getFunctionType();
+    func = Function::Create(ft, Function::ExternalLinkage, GetName(), TheModule);
+  }
+  return func;
+}
+
 // Can only be called after Bind phase.
 Function *Func::getFunction() {
   vector<SType*> genericBindings;
@@ -629,8 +647,15 @@ void Func::MatchGenerics(
         genericBindings[i] = NULL;
 }
 
-File::File(string &name, const vector<Func*> &funcs, const vector<SType*> &tys)
-  : Name(name), Funcs(funcs), STypes(tys), FileModule(name, getGlobalContext()) {}
+File::File(string &name,
+    const vector<Func*> &funcs,
+    const vector<Extern*> &externs,
+    const vector<SType*> &tys)
+  : Name(name),
+    Funcs(funcs),
+    Externs(externs),
+    STypes(tys),
+    FileModule(name, getGlobalContext()) {}
 
   /*
 TODO: in JIT pass experiment with:
@@ -666,9 +691,9 @@ void File::compile() {
     const FunctionType *mallocTy = FunctionType::get(
       Type::getInt8PtrTy(getGlobalContext()),
       vector<const Type*>(1, Type::getInt64Ty(getGlobalContext())), false);
-    const FunctionType *mallocAtomicTy = FunctionType::get(
-      Type::getInt8PtrTy(getGlobalContext()),
-      vector<const Type*>(1, Type::getInt64Ty(getGlobalContext())), false);
+    const FunctionType *printTy = FunctionType::get(
+      Type::getInt32Ty(getGlobalContext()),
+      vector<const Type*>(1, SString::get()->getType()), false);
 
     Function *mallocFunc = TheModule->getFunction("GC_malloc");
     if (mallocFunc == 0)
@@ -678,7 +703,12 @@ void File::compile() {
     Function *mallocAtomicFunc = TheModule->getFunction("GC_malloc_atomic");
     if (mallocAtomicFunc == 0)
       mallocAtomicFunc = Function::Create(
-        mallocTy, Function::ExternalLinkage, "GC_malloc", TheModule);
+        mallocTy, Function::ExternalLinkage, "GC_malloc_atomic", TheModule);
+
+    Function *printFunc = TheModule->getFunction("print");
+    if (printFunc == 0)
+      printFunc = Function::Create(
+        printTy, Function::ExternalLinkage, "print", TheModule);
   }
 
   DEBUG(dbgs() << "PHASE: LambdaLift\n");
@@ -711,9 +741,13 @@ void File::compile() {
     (*i)->getFullName(name);
     NamedExprs[name] = *i;
   }
+  for (unsigned i=0, e=Externs.size(); i != e; ++i)
+    NamedExprs[Externs[i]->GetName()] = Externs[i];
 
   // PHASE: BindNames.
   DEBUG(dbgs() << "PHASE: BindNames\n");
+  for (unsigned i=0, e=Externs.size(); i != e; ++i)
+    Externs[i]->Bind(NamedExprs);
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++)
     (*i)->Bind(NamedExprs);
 
@@ -754,6 +788,8 @@ void File::compile() {
 
   // PHASE: Code generation
   DEBUG(dbgs() << "PHASE: Codegen\n");
+  for (unsigned i=0, e=Externs.size(); i != e; ++i)
+    Externs[i]->Codegen();
   for (vector<Func*>::const_iterator i=Funcs.begin(); i!=Funcs.end(); i++) {
     // TODO: pass in the LLVM state as an argument.
     (*i)->Codegen();

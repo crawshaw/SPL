@@ -30,6 +30,8 @@ void SStructType::dump() {
 void SArray::dump()  { std::cerr << "SArray"; }
 void SString::dump() { std::cerr << "SString"; }
 
+SString *SString::Singleton = NULL;
+
 void SFunctionType::dump() {
   std::cerr << "SFunctionType::" << Name << "(";
   for (unsigned i=0, e=Args.size(); i != e; ++i) {
