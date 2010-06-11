@@ -96,7 +96,7 @@ void SStructType::Bind(
 Type const *SStructType::getPassType() { return ThisType; }
 Type const *SStructType::getType() { return PointerType::getUnqual(ThisType); }
 void SArray::Bind(vector<string> &, const map<string, SType*> &) {}
-SArray::SArray(SType *ty): SStructType("Array") {
+SArray::SArray(SType *ty): SStructType("Array"), Contained(ty) {
   // For show, fill these.
   ElementNames.push_back("length");
   ElementSTypeNames.push_back("Int32");

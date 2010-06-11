@@ -29,23 +29,28 @@ namespace SPL {
     class Expr;
     class Func;
     class Member;
+    class ArrayAccess;
     class Call;
     class SType;
     class SStructType;
     class SFunctionType;
     class SGenericType;
+    class SArray;
 
     class TypeInferer {
       multimap<Expr*, Expr*>  eqns;
       map<Expr*, SType*>      tys;
       vector<Member*>         members;
+      vector<ArrayAccess*>    arrayAccesses;
       unsigned ResolveMembers();
+      unsigned ResolveArrayAccesses();
     public:
       void TypeUnification();
       void TypePopulation();
       void eqn(Expr* lhs, Expr* rhs);
       void ty(Expr* expr, SType* ty);
       void member(Member *);
+      void arrayAccess(ArrayAccess *);
     };
 
     class Expr {
@@ -63,6 +68,7 @@ namespace SPL {
       virtual SType *getSType() { return ThisType; }
       virtual void setSType(SType *ty) { ThisType = ty; }
       virtual Type const *getType();
+      virtual Value *LValuegen();
     };
 
     // TODO: more general literal
@@ -99,6 +105,7 @@ namespace SPL {
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual void RewriteBinding(string &OldName, string &NewName);
+      virtual Value *LValuegen();
     };
 
     class UnaryOp : public Expr {
@@ -168,6 +175,24 @@ namespace SPL {
       virtual Value *Codegen();
     };
 
+    class Assign : public BinaryOp {
+    public:
+      Assign(Expr &lhs, Expr &rhs): BinaryOp(lhs, rhs){}
+      virtual void TypeInfer(TypeInferer &);
+      virtual Value *Codegen();
+    };
+
+    class ArrayAccess : public BinaryOp {
+      SArray *getSourceSType();
+    public:
+      ArrayAccess(Expr &lhs, Expr &rhs): BinaryOp(lhs,rhs) {}
+      virtual void TypeInfer(TypeInferer &);
+      virtual void TypeInferSecondPass();
+      virtual Value *Codegen();
+      virtual Value *LValuegen();
+      Expr *getSource() { return LHS; }
+    };
+
     class Member : public Expr {
       Expr *Source;
       const string FieldName;
@@ -180,8 +205,8 @@ namespace SPL {
       virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual void TypeInferSecondPass();
       virtual Value *Codegen();
+      virtual Value *LValuegen();
       Expr *getSource() { return Source; }
-      //virtual Type const *getType();
     };
 
     class Register;
@@ -381,11 +406,26 @@ namespace SPL {
       vector<Expr*> *getActivationRecord();
     };
 
+    class Array : public Expr {
+      const string STypeName;
+      SType *Contained;
+      Expr *SizeExpr;
+    public:
+      Array(const string &stName, Expr &sizeExpr):
+        STypeName(stName), SizeExpr(&sizeExpr) {}
+      virtual void Bind(map<string, Expr*> &);
+      virtual void TypeInfer(TypeInferer &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
+      virtual Value *Codegen();
+    };
+
     class Constructor : public Expr {
       const string STypeName;
       vector<Expr*> Args;
     public:
-      Constructor(const string &stName, const vector<Expr*> &args)
+      Constructor(
+          const string &stName,
+          const vector<Expr*> &args)
         : STypeName(stName), Args(args) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
@@ -468,8 +508,10 @@ namespace SPL {
     //        first element. Learn more about LLVM
     //        before doing this.
     class SArray : public SStructType {
+      SType *Contained;
     public:
       SArray(SType *);
+      SType *getContained() { return Contained; }
       virtual void Bind(vector<string> &, const map<string, SType*> &);
       virtual void dump();
     };

@@ -64,6 +64,16 @@ SStructType *Member::getSourceSType() {
   }
   return sty;
 }
+SArray *ArrayAccess::getSourceSType() {
+  SArray *sty = dynamic_cast<SArray*>(LHS->getSType());
+  if (sty == NULL) {
+    std::cerr << "Attempting array access on non-array type:";
+    LHS->getSType()->dump();
+    std::cerr << std::endl;
+    exit(1);
+  }
+  return sty;
+}
 
 /////////////////////////////////////////////////////////////////////
 
@@ -90,6 +100,10 @@ void BinaryOp::Bind(map<string, Expr*> &NamedExprs) {
 
 void Member::Bind(map<string, Expr*> &NamedExprs) {
   Source->Bind(NamedExprs);
+}
+
+void Array::Bind(map<string, Expr*> &NamedExprs) {
+  SizeExpr->Bind(NamedExprs);
 }
 
 void Constructor::Bind(map<string, Expr*> &NamedExprs) {
@@ -252,6 +266,9 @@ void Func::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
 void Closure::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   // TODO: what about the ActivationRecord?
 }
+void Array::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
+  SizeExpr->FindCalls(calls);
+}
 void Constructor::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   for (unsigned i=0, e=Args.size(); i != e; ++i)
     Args[i]->FindCalls(calls);
@@ -262,18 +279,44 @@ void RegisterFunArg::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {}
 
 /////////////////////////////////////////////////////////////////////
 
+Value *Expr::LValuegen() {
+  std::cerr << "Called LValuegen on Expr that is not an LValue." << std::endl;
+  exit(1);
+}
+
+Value *Variable::LValuegen() {
+  Value *V = Binding->Codegen();
+  if (V == 0) {
+    std::cerr << "Unknown variable: `" << Name << "'" << std::endl;
+    exit(1);
+  }
+  return V;
+}
+
+Value *ArrayAccess::LValuegen() {
+  const Type *Contained = getSourceSType()->getContained()->getType();
+  Value *src = LHS->Codegen();
+  Value *array = Builder.CreateLoad(Builder.CreateStructGEP(src, 1));
+  Value *val = Builder.CreateGEP(array, RHS->Codegen());
+  Value *castVal = Builder.CreateBitCast(val, PointerType::getUnqual(Contained));
+  return castVal;
+}
+
+Value *Member::LValuegen() {
+  unsigned fieldIndex = getSourceSType()->getIndex(FieldName);
+  Value *src = Source->Codegen();
+  return Builder.CreateStructGEP(src, fieldIndex);
+}
+
+/////////////////////////////////////////////////////////////////////
+
 
 Value *Number::Codegen() {
   return ConstantInt::get(getGlobalContext(), APInt(32, Val, true));
 }
 
 Value *Variable::Codegen() {
-  Value *V = Binding->Codegen();
-  if (V == 0) {
-    std::cerr << "Unknown variable: `" << Name << "'" << std::endl;
-    return NULL;
-  }
-  return Builder.CreateLoad(V, Name.c_str());
+  return Builder.CreateLoad(LValuegen(), Name.c_str());
 }
 
 Value *Not::Codegen() {
@@ -331,24 +374,89 @@ Value *JoinString::Codegen() {
 }
 
 Value *Seq::Codegen() {
+  /*
   Function *TheFunction = Builder.GetInsertBlock()->getParent();
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
     TheFunction->getEntryBlock().begin());
   AllocaInst *Alloca = TmpB.CreateAlloca(LHS->getType(), 0);
+  */
+  std::cout << "--- Hit a Seq" << std::endl;
   Value *val = LHS->Codegen();
-  Builder.CreateStore(val, Alloca);
+  val->dump();
+  std::cout << "---" << std::endl;
+  //Builder.CreateStore(val, Alloca);
 
-  return RHS->Codegen();
+  Value *v2 = RHS->Codegen();
+  v2->dump();
+  std::cout << "---" << std::endl;
+  return v2;//RHS->Codegen();
+}
+
+Value *Assign::Codegen() {
+  std::cout << "--- Hit an Assign" << std::endl;
+  Value *Val = RHS->Codegen();
+  Val->dump();
+  std::cout << "---" << std::endl;
+  Value *lval = LHS->LValuegen();
+  lval->dump();
+  Builder.CreateStore(Val, lval);
+  std::cout << "---" << std::endl;
+  return Val;
+}
+
+Value *ArrayAccess::Codegen() {
+  return Builder.CreateLoad(LValuegen());
 }
 
 Value *Member::Codegen() {
-  SStructType *sty = getSourceSType();
+  return Builder.CreateLoad(LValuegen());
+}
 
-  unsigned fieldIndex = sty->getIndex(FieldName);
+Value *Array::Codegen() {
+  Value *arraySize = SizeExpr->Codegen();
 
-  Value *src = Source->Codegen();
-  Value *gep = Builder.CreateStructGEP(src, fieldIndex);
-  return Builder.CreateLoad(gep);
+  // Heap allocation.
+  Function *TheFunction = Builder.GetInsertBlock()->getParent();
+  IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
+    TheFunction->getEntryBlock().begin());
+
+  Type const *ty = ThisType->getPassType();
+  Function *mallocFunc = TheModule->getFunction("GC_malloc");
+  Value *mallocArg = ConstantExpr::getSizeOf(ty);
+
+  Value *val = TmpB.CreateCall(mallocFunc, mallocArg);
+  Value *castVal = TmpB.CreateBitCast(val, PointerType::getUnqual(ty));
+  std::cout << "tag 3" << std::endl;
+
+  Value *sizePtr = TmpB.CreateStructGEP(castVal, 0);
+  Builder.CreateStore(arraySize, sizePtr);
+  arraySize = TmpB.CreateIntCast(arraySize,
+      Type::getInt64Ty(getGlobalContext()), true);
+
+  const Type *contained = Contained->getType();
+  contained->dump();
+  //Value *sizeofC = TmpB.CreateIntCast(ConstantExpr::getSizeOf(contained),
+  //    Type::getInt32Ty(getGlobalContext()), true);
+  Value *sizeofC = ConstantExpr::getSizeOf(contained);
+  sizeofC->dump();
+  arraySize->dump();
+  std::cout << "tag 3a" << std::endl;
+  Value *arrayBytes = TmpB.CreateMul(arraySize, sizeofC);
+  arrayBytes->getType()->dump();
+  arrayBytes->dump();
+  std::cout << "tag 3b" << std::endl;
+  Value *arrVal = TmpB.CreateCall(mallocFunc, arrayBytes);
+  arrVal = TmpB.CreateBitCast(arrVal, PointerType::getUnqual(
+        ArrayType::get(contained, 0)));
+  arrVal->dump();
+  // TODO: zero values
+  
+  Value *arrPtr = TmpB.CreateStructGEP(castVal, 1);
+  Builder.CreateStore(arrVal, arrPtr);
+
+  std::cout << "tag 4" << std::endl;
+
+  return castVal;
 }
 
 Value *Constructor::Codegen() {

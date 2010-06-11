@@ -40,6 +40,20 @@ void Seq::TypeInfer(TypeInferer &inferer) {
   LHS->TypeInfer(inferer);
   RHS->TypeInfer(inferer);
 }
+void Assign::TypeInfer(TypeInferer &inferer) {
+  inferer.eqn(this, RHS);
+  LHS->TypeInfer(inferer);
+  RHS->TypeInfer(inferer);
+}
+void ArrayAccess::TypeInfer(TypeInferer &inferer) {
+  inferer.arrayAccess(this);
+  LHS->TypeInfer(inferer);
+  RHS->TypeInfer(inferer);
+}
+void ArrayAccess::TypeInferSecondPass() {
+  SArray *sty = getSourceSType();
+  setSType(sty->getContained());
+}
 void Member::TypeInfer(TypeInferer &inferer) {
   inferer.member(this);
   Source->TypeInfer(inferer);
@@ -127,6 +141,15 @@ void Closure::TypeInfer(TypeInferer &inferer) {
   for (unsigned i=0, e=ActivationRecord.size(); i != e; ++i)
     inferer.eqn(ActivationRecord[i], argRegs[i]);
 }
+void Array::TypeInfer(TypeInferer &inferer) {
+  SType *ty = NamedTypes[STypeName];
+  if (ty == NULL) {
+    std::cerr << "Unknown type for Array: " << STypeName << std::endl;
+    exit(1);
+  }
+  inferer.ty(this, new SArray(ty));
+  Contained = ty;
+}
 void Constructor::TypeInfer(TypeInferer &inferer) {
   SType *ty = NamedTypes[STypeName];
   if (ty == NULL) {
@@ -151,8 +174,6 @@ void Constructor::TypeInfer(TypeInferer &inferer) {
 }
 
 
-// TODO: put these in a different namespace, maybe SPL::TypeInference
-
 unsigned TypeInferer::ResolveMembers() {
   vector<Member*> remainingMembers;
   for (unsigned i=0, e=members.size(); i != e; ++i) {
@@ -170,6 +191,25 @@ unsigned TypeInferer::ResolveMembers() {
   if (membersResolved > 0)
     members.assign(remainingMembers.begin(), remainingMembers.end());
   return membersResolved;
+}
+
+unsigned TypeInferer::ResolveArrayAccesses() {
+  vector<ArrayAccess*> remaining;
+  for (unsigned i=0, e=arrayAccesses.size(); i != e; ++i) {
+    Expr *src = arrayAccesses[i]->getSource();
+    if (tys.count(src) > 0) {
+      src->setSType(tys[src]);
+      arrayAccesses[i]->TypeInferSecondPass();
+      tys[arrayAccesses[i]] = arrayAccesses[i]->getSType();
+    } else {
+      remaining.push_back(arrayAccesses[i]);
+    }
+  }
+
+  unsigned resolved = arrayAccesses.size() - remaining.size();
+  if (resolved > 0)
+    arrayAccesses.assign(remaining.begin(), remaining.end());
+  return resolved;
 }
 
 void TypeInferer::TypeUnification() {
@@ -209,7 +249,7 @@ void TypeInferer::TypeUnification() {
 
     if (noMatchesIn > es.size() + 2) {
       // Try resolving member accesses to give us more type fodder.
-      if (ResolveMembers() == 0) {
+      if (ResolveMembers() == 0 && ResolveArrayAccesses() == 0) {
         // Could not resolve any members. Now we are in trouble.
         break;
       } else {
@@ -218,7 +258,7 @@ void TypeInferer::TypeUnification() {
     }
   }
 
-  while (ResolveMembers() > 0) {
+  while (ResolveMembers() > 0 || ResolveArrayAccesses() > 0) {
     ;
   }
 
@@ -228,6 +268,9 @@ void TypeInferer::TypeUnification() {
     exit(1);
   } else if (members.size() > 0) {
     std::cerr << "Unable to resolve all type members." << std::endl;
+    exit(1);
+  } else if (arrayAccesses.size() > 0) {
+    std::cerr << "Unable to resolve all array access types." << std::endl;
     exit(1);
   }
 }
@@ -243,8 +286,7 @@ void TypeInferer::eqn(Expr* lhs, Expr* rhs) {
 void TypeInferer::ty(Expr* expr, SType* ty) {
   tys.insert(pair<Expr*, SType*>(expr, ty));
 }
-void TypeInferer::member(Member *m) {
-  members.push_back(m);
-}
+void TypeInferer::member(Member *m) { members.push_back(m); }
+void TypeInferer::arrayAccess(ArrayAccess *a) { arrayAccesses.push_back(a); }
 
 }};
