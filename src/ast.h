@@ -217,8 +217,9 @@ namespace SPL {
       Register *InitReg;
       Expr* Body;
     public:
-      Binding(const string &name, Expr& init, Expr& body)
-        : Name(name), Init(&init), InitReg(NULL), Body(&body) {}
+      Binding(const string &name, Expr& init)
+        : Name(name), Init(&init), InitReg(NULL), Body(NULL) {}
+      void setBody(Expr &b) { Body = &b; }
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
       virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);

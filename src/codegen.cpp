@@ -374,33 +374,13 @@ Value *JoinString::Codegen() {
 }
 
 Value *Seq::Codegen() {
-  /*
-  Function *TheFunction = Builder.GetInsertBlock()->getParent();
-  IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
-    TheFunction->getEntryBlock().begin());
-  AllocaInst *Alloca = TmpB.CreateAlloca(LHS->getType(), 0);
-  */
-  std::cout << "--- Hit a Seq" << std::endl;
-  Value *val = LHS->Codegen();
-  val->dump();
-  std::cout << "---" << std::endl;
-  //Builder.CreateStore(val, Alloca);
-
-  Value *v2 = RHS->Codegen();
-  v2->dump();
-  std::cout << "---" << std::endl;
-  return v2;//RHS->Codegen();
+  LHS->Codegen();
+  return RHS->Codegen();
 }
 
 Value *Assign::Codegen() {
-  std::cout << "--- Hit an Assign" << std::endl;
   Value *Val = RHS->Codegen();
-  Val->dump();
-  std::cout << "---" << std::endl;
-  Value *lval = LHS->LValuegen();
-  lval->dump();
-  Builder.CreateStore(Val, lval);
-  std::cout << "---" << std::endl;
+  Builder.CreateStore(Val, LHS->LValuegen());
   return Val;
 }
 
@@ -434,27 +414,15 @@ Value *Array::Codegen() {
       Type::getInt64Ty(getGlobalContext()), true);
 
   const Type *contained = Contained->getType();
-  contained->dump();
-  //Value *sizeofC = TmpB.CreateIntCast(ConstantExpr::getSizeOf(contained),
-  //    Type::getInt32Ty(getGlobalContext()), true);
   Value *sizeofC = ConstantExpr::getSizeOf(contained);
-  sizeofC->dump();
-  arraySize->dump();
-  std::cout << "tag 3a" << std::endl;
   Value *arrayBytes = TmpB.CreateMul(arraySize, sizeofC);
-  arrayBytes->getType()->dump();
-  arrayBytes->dump();
-  std::cout << "tag 3b" << std::endl;
   Value *arrVal = TmpB.CreateCall(mallocFunc, arrayBytes);
   arrVal = TmpB.CreateBitCast(arrVal, PointerType::getUnqual(
         ArrayType::get(contained, 0)));
-  arrVal->dump();
   // TODO: zero values
   
   Value *arrPtr = TmpB.CreateStructGEP(castVal, 1);
   Builder.CreateStore(arrVal, arrPtr);
-
-  std::cout << "tag 4" << std::endl;
 
   return castVal;
 }

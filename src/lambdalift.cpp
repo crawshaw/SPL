@@ -79,7 +79,9 @@ Expr* Func::LambdaLift(vector<Func*> &newFuncs) {
     Closure *closure = new Closure(newName, activationRecord, newFunc);
     newFuncs.push_back(newFunc);
 
-    return new Binding(Name, *closure, *Context);
+    Binding *b = new Binding(Name, *closure);
+    b->setBody(*Context);
+    return b;
   }
 }
 

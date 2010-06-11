@@ -40,6 +40,7 @@ std::vector<AST::Instance*>  instances;
 %type <ident>     TIDENT
 %type <args>      args
 %type <callargs>  callargs
+%type <callargs>  exps
 %type <fun>       fun
 %type <exp>       EXTERN
 %type <ext>       extern
@@ -88,29 +89,51 @@ top :
 exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | exp '-' exp { $$ = new AST::Subtract(*$1, *$3); }
     | exp '*' exp { $$ = new AST::Multiply(*$1, *$3); }
-    | exp ';' exp { $$ = new AST::Seq(*$1, *$3); }
     | exp '=' exp { $$ = new AST::Assign(*$1, *$3); }
     | exp '.' IDENT { $$ = new AST::Member(*$1, *$3); }
     | exp EQ  exp { $$ = new AST::Eq(*$1, *$3); }
     | exp PP  exp { $$ = new AST::JoinString(*$1, *$3); }
-    | '{' exp '}' { $$ = $2; }
+    | '{' exps '}' {
+      // Unroll the block into a classic ML expression.
+      vector<AST::Expr*> exprs = *$2;
+      if (exprs.size() == 0) {
+        std::cerr << "Empty block" << std::endl;
+        exit(1);
+      } else if (exprs.size() == 1) {
+        $$ = exprs[0];
+      } else {
+        AST::Expr *last = exprs[exprs.size() - 1];
+        for (int i=exprs.size() - 2; i >= 0; --i) {
+          if (AST::Func *fn = dynamic_cast<AST::Func*>(exprs[i])) {
+            fn->setContext(*last);
+            last = fn;
+          } else if (AST::Binding *bn = dynamic_cast<AST::Binding*>(exprs[i])) {
+            bn->setBody(*last);
+            last = bn;
+          } else {
+            last = new AST::Seq(*exprs[i], *last);
+          }
+        }
+        $$ = last;
+      }
+    }
     | IDENT       { $$ = new AST::Variable(*$1); }
     | NUMBER      { $$ = new AST::Number($1); }
     | STRING      { $$ = new AST::StringLiteral(*$1); }
     | exp '[' exp ']' { $$ = new AST::ArrayAccess(*$1, *$3); }
     | IF exp THEN exp ELSE exp  { $$ = new AST::If(*$2, *$4, *$6); }
-    | TK_VAL IDENT '=' exp ';' exp { $$ = new AST::Binding(*$2, *$4, *$6); }
+    | TK_VAL IDENT '=' exp { $$ = new AST::Binding(*$2, *$4); }
     | IDENT '(' callargs ')' { $$ = new AST::Call(*$1, *$3); }
     | ARRAY '[' TIDENT ']' '(' exp ')' { $$ = new AST::Array(*$3, *$6); }
     | TIDENT '(' callargs ')' { $$ = new AST::Constructor(*$1, *$3); }
-    | fun ';' exp {
-      $1->setContext(*$3);
-      AST::Expr* expr = $1;
-      $$ = expr;
-    }
+    | fun { $$ = $1; }
 
-fun : funDef IDENT templateSet '(' args ')' ':' TIDENT '=' '{' exp '}' {
-      $$ = new AST::Func(*$2, *$3, *$5, $8, *$11, NULL, $1);
+exps  : { $$ = new vector<AST::Expr*>(); }
+      | exps ';' exp { $$ = $1; $$->push_back($3); }
+      | exp { $$ = new vector<AST::Expr*>(); $$->push_back($1); }
+
+fun : funDef IDENT templateSet '(' args ')' ':' TIDENT '=' exp {
+      $$ = new AST::Func(*$2, *$3, *$5, $8, *$10, NULL, $1);
     }
     /* TODO: when we have more than local type inference working, invoke.
     | funDef IDENT '(' args ')' '=' '{' exp '}' {
