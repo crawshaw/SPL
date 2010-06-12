@@ -411,9 +411,15 @@ namespace SPL {
       const string STypeName;
       SType *Contained;
       Expr *SizeExpr;
+      Expr *DefaultValue;
     public:
-      Array(const string &stName, Expr &sizeExpr):
-        STypeName(stName), SizeExpr(&sizeExpr) {}
+      Array(
+          const string &stName,
+          Expr &sizeExpr,
+          Expr &defaultVal):
+        STypeName(stName),
+        SizeExpr(&sizeExpr),
+        DefaultValue(&defaultVal) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
       virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);

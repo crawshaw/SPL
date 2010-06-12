@@ -124,7 +124,7 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | IF exp THEN exp ELSE exp  { $$ = new AST::If(*$2, *$4, *$6); }
     | TK_VAL IDENT '=' exp { $$ = new AST::Binding(*$2, *$4); }
     | IDENT '(' callargs ')' { $$ = new AST::Call(*$1, *$3); }
-    | ARRAY '[' TIDENT ']' '(' exp ')' { $$ = new AST::Array(*$3, *$6); }
+    | ARRAY '[' TIDENT ']' '(' exp ',' exp ')' { $$ = new AST::Array(*$3, *$6, *$8); }
     | TIDENT '(' callargs ')' { $$ = new AST::Constructor(*$1, *$3); }
     | fun { $$ = $1; }
 

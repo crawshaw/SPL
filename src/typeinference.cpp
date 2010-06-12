@@ -142,6 +142,9 @@ void Closure::TypeInfer(TypeInferer &inferer) {
     inferer.eqn(ActivationRecord[i], argRegs[i]);
 }
 void Array::TypeInfer(TypeInferer &inferer) {
+  SizeExpr->TypeInfer(inferer);
+  DefaultValue->TypeInfer(inferer);
+
   SType *ty = NamedTypes[STypeName];
   if (ty == NULL) {
     std::cerr << "Unknown type for Array: " << STypeName << std::endl;

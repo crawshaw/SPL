@@ -1,0 +1,5 @@
+io main(): Int32 = {
+  val a = Array[Int32](2, 1);
+  a[1] = 7;
+  a[0] + a[1]
+}

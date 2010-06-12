@@ -104,6 +104,7 @@ void Member::Bind(map<string, Expr*> &NamedExprs) {
 
 void Array::Bind(map<string, Expr*> &NamedExprs) {
   SizeExpr->Bind(NamedExprs);
+  DefaultValue->Bind(NamedExprs);
 }
 
 void Constructor::Bind(map<string, Expr*> &NamedExprs) {
@@ -268,6 +269,7 @@ void Closure::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
 }
 void Array::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   SizeExpr->FindCalls(calls);
+  DefaultValue->FindCalls(calls);
 }
 void Constructor::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   for (unsigned i=0, e=Args.size(); i != e; ++i)
@@ -297,9 +299,10 @@ Value *ArrayAccess::LValuegen() {
   const Type *Contained = getSourceSType()->getContained()->getType();
   Value *src = LHS->Codegen();
   Value *array = Builder.CreateLoad(Builder.CreateStructGEP(src, 1));
-  Value *val = Builder.CreateGEP(array, RHS->Codegen());
-  Value *castVal = Builder.CreateBitCast(val, PointerType::getUnqual(Contained));
-  return castVal;
+  Value *castVal =
+    Builder.CreateBitCast(array, PointerType::getUnqual(Contained));
+  Value *val = Builder.CreateGEP(castVal, RHS->Codegen());
+  return val;
 }
 
 Value *Member::LValuegen() {
@@ -419,9 +422,70 @@ Value *Array::Codegen() {
   Value *arrVal = TmpB.CreateCall(mallocFunc, arrayBytes);
   arrVal = TmpB.CreateBitCast(arrVal, PointerType::getUnqual(
         ArrayType::get(contained, 0)));
-  // TODO: zero values
+
+  std::cout << "tag 4" << std::endl;
+  // Set initial values.
+  {
+    if (DefaultValue == 0)
+      std::cout << "unexpected null default value." << std::endl;
+    Value *defaultVal = DefaultValue->Codegen();
+    std::cout << "tag 4a" << std::endl;
+    Value *StartVal = ConstantInt::get(getGlobalContext(), APInt(64, 0, true));
+    //  Builder.CreateAlloca(
+    //  Type::getInt64Ty(getGlobalContext()), 0, "loopvar");
+    std::cout << "tag 4b" << std::endl;
+    //Builder.CreateStore(
+    //  ConstantInt::get(getGlobalContext(), APInt(64, 0, true)), StartVal);
+
+    std::cout << "tag 5" << std::endl;
+    // Make the new basic block for the loop header, inserting after current block.
+    Function *TheFunction = Builder.GetInsertBlock()->getParent();
+    BasicBlock *PreheaderBB = Builder.GetInsertBlock();
+    BasicBlock *LoopBB = BasicBlock::Create(getGlobalContext(), "loop", TheFunction);
+    // Insert an explicit fall through from the current block to the LoopBB.
+    Builder.CreateBr(LoopBB);
+    // Start insertion in LoopBB.
+    Builder.SetInsertPoint(LoopBB);
+    
+    std::cout << "tag 6" << std::endl;
+    // Start the PHI node with an entry for Start.
+    PHINode *Variable = Builder.CreatePHI(Type::getInt64Ty(getGlobalContext()));
+    std::cout << "tag 6a" << std::endl;
+    Variable->addIncoming(StartVal, PreheaderBB);
+    std::cout << "tag 6b" << std::endl;
+
+    // Emit the body of the loop.
+    Value *arrayPos = Builder.CreateGEP(arrVal, Variable);
+    arrayPos = Builder.CreateBitCast(arrayPos, PointerType::getUnqual(contained));
+    Builder.CreateStore(defaultVal, arrayPos);
+    // TODO:
+    //if (Body->Codegen() == 0)
+    
+    // Emit the step value.
+    Value *StepVal = ConstantInt::get(getGlobalContext(), APInt(64, 1, true));
+    Value *NextVar = Builder.CreateAdd(Variable, StepVal, "nextvar");
+    std::cout << "tag 7" << std::endl;
+
+    Value *EndCond = Builder.CreateICmpEQ(NextVar, arraySize, "loopcond");
+
+    // Create the "after loop" block and insert it.
+    BasicBlock *LoopEndBB = Builder.GetInsertBlock();
+    BasicBlock *AfterBB = BasicBlock::Create(
+      getGlobalContext(), "afterloop", TheFunction);
+    std::cout << "tag 8" << std::endl;
+    
+    // Insert the conditional branch into the end of LoopEndBB.
+    Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
+    
+    // Any new code will be inserted in AfterBB.
+    Builder.SetInsertPoint(AfterBB);
+    std::cout << "tag 9" << std::endl;
+    
+    // Add a new entry to the PHI node for the backedge.
+    Variable->addIncoming(NextVar, LoopEndBB);
+  }
   
-  Value *arrPtr = TmpB.CreateStructGEP(castVal, 1);
+  Value *arrPtr = Builder.CreateStructGEP(castVal, 1);
   Builder.CreateStore(arrVal, arrPtr);
 
   return castVal;
@@ -430,19 +494,16 @@ Value *Array::Codegen() {
 Value *Constructor::Codegen() {
   // Heap allocation.
   Function *TheFunction = Builder.GetInsertBlock()->getParent();
-  IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
-    TheFunction->getEntryBlock().begin());
-
   Type const *ty = ThisType->getPassType();
 
   Function *mallocFunc = TheModule->getFunction("GC_malloc");
   Value *mallocArg = ConstantExpr::getSizeOf(ty);
 
-  Value *val = TmpB.CreateCall(mallocFunc, mallocArg);
-  Value *castVal = TmpB.CreateBitCast(val, PointerType::getUnqual(ty));
+  Value *val = Builder.CreateCall(mallocFunc, mallocArg);
+  Value *castVal = Builder.CreateBitCast(val, PointerType::getUnqual(ty));
 
   for (unsigned i=0, e=Args.size(); i != e; ++i) {
-    Value *gep = TmpB.CreateStructGEP(castVal, i);
+    Value *gep = Builder.CreateStructGEP(castVal, i);
     Value *val = Args[i]->Codegen();
     Builder.CreateStore(val, gep);
   }
@@ -453,10 +514,10 @@ Value *Constructor::Codegen() {
 Value *Register::Codegen() {
   if (Alloca == NULL) {
     Value *InitVal = Source->Codegen();
-    Function *TheFunction = Builder.GetInsertBlock()->getParent();
-    IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
-      TheFunction->getEntryBlock().begin());
-    Alloca = TmpB.CreateAlloca(Source->getType(), 0, Name.c_str());
+    //Function *TheFunction = Builder.GetInsertBlock()->getParent();
+    //IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
+    //  TheFunction->getEntryBlock().begin());
+    Alloca = Builder.CreateAlloca(Source->getType(), 0, Name.c_str());
 
     Builder.CreateStore(InitVal, Alloca);
   }
@@ -470,6 +531,7 @@ Value *RegisterFunArg::Codegen() {
 }
 
 Value *Binding::Codegen() {
+  InitReg->Codegen();
   return Body->Codegen();
 }
 

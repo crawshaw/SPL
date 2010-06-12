@@ -1,0 +1,10 @@
+struct Point = {
+  x: Int32,
+  y: Int32
+}
+
+io main(): Int32 = {
+  val a = Array[Point](3, Point(1,0));
+  a[2] = Point(5,0);
+  a[0].x + a[2].x
+}
