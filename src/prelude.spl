@@ -1,0 +1,8 @@
+def version(): Int32 = 1
+
+extern print(String): Int32
+extern putchar(Int32): Int32
+io println(str: String): Int32 = {
+  print(str);
+  putchar(10) // TODO: add grammar support for chars
+}

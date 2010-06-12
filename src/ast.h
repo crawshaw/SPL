@@ -631,6 +631,7 @@ namespace SPL {
           const vector<Func*> &funcs,
           const vector<Extern*> &externs,
           const vector<SType*> &tys);
+      void merge(File &);
       void compile();
       void optimize();
       Module &getModule() { return FileModule; }

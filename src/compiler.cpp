@@ -22,15 +22,7 @@ cl::opt<std::string> OutputFilename(
   "o", cl::desc("Output file name"), cl::value_desc("file"), cl::Prefix);
 cl::opt<bool> Optimize("O", cl::desc("Optimize"));
 
-int main(int argc, char** argv)
-{
-  llvm::EnableDebugBuffering = true;
-  llvm::cl::ParseCommandLineOptions(argc, argv, "Sprint Compiler");
-
-  std::string outFile(
-    OutputFilename.empty() ? std::string("junk.bc") : OutputFilename);
-
-  std::string fileName(InputFilenames[0]);
+static AST::File *parseFile(std::string& fileName) {
   std::ifstream infile(fileName.c_str());
   if (!infile.is_open()) {
     std::cerr << "Unable to open file: " << fileName << std::endl;
@@ -41,15 +33,38 @@ int main(int argc, char** argv)
   col = 0;
 
   int ret = yyparse();
-  if (ret)
-    return ret;
+  if (ret) {
+    std::cerr << "Error parsing: " << ret << std::endl;
+    exit(1);
+  }
 
-  AST::File file(fileName, toplevel, externs, types);
+  AST::File *file = new AST::File(fileName, toplevel, externs, types);
 
-  file.compile();
+  toplevel.clear();
+  externs.clear();
+  types.clear();
+
+  return file;
+}
+
+int main(int argc, char** argv)
+{
+  llvm::EnableDebugBuffering = true;
+  llvm::cl::ParseCommandLineOptions(argc, argv, "Sprint Compiler");
+
+  std::string outFile(
+    OutputFilename.empty() ? std::string("junk.bc") : OutputFilename);
+
+  // TODO: bake the prelude into the compiler... somehow.
+  std::string prelude("src/prelude.spl");
+  AST::File *file = parseFile(prelude);
+  for (unsigned i=0, e=InputFilenames.size(); i != e; ++i)
+    file->merge(*parseFile(InputFilenames[i]));
+
+  file->compile();
 
   if (Optimize)
-    file.optimize();
+    file->optimize();
 
   std::string err;
   llvm::raw_fd_ostream out(outFile.c_str(), err);
@@ -57,7 +72,7 @@ int main(int argc, char** argv)
     std::cerr << "Unable to open output file: " << outFile << std::endl;
     exit(1);
   }
-  llvm::WriteBitcodeToFile(&file.getModule(), out);
+  llvm::WriteBitcodeToFile(&file->getModule(), out);
 
   return 0;
 }

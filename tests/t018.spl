@@ -1,5 +1,3 @@
-extern print(String): Int32
-
 io main(): Int32 = {
   var x = 0;
   var i = 1;

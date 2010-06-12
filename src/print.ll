@@ -19,8 +19,8 @@ entry:
 }
 
 ; TODO: we can define this in the prelude: print(x); print("\n")
-define i32 @println(%0* %x1) {
-  %x2 = call i32 (%0*)* @print(%0* %x1)
-  %x3 = call i32 (i32)* @putchar(i32 10)
-  ret i32 %x3
-}
+;define i32 @println(%0* %x1) {
+;  %x2 = call i32 (%0*)* @print(%0* %x1)
+;  %x3 = call i32 (i32)* @putchar(i32 10)
+;  ret i32 %x3
+;}

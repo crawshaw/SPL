@@ -423,7 +423,6 @@ Value *Array::Codegen() {
 
   Value *val = TmpB.CreateCall(mallocFunc, mallocArg);
   Value *castVal = TmpB.CreateBitCast(val, PointerType::getUnqual(ty));
-  std::cout << "tag 3" << std::endl;
 
   Value *sizePtr = TmpB.CreateStructGEP(castVal, 0);
   Builder.CreateStore(arraySize, sizePtr);
@@ -437,7 +436,6 @@ Value *Array::Codegen() {
   arrVal = TmpB.CreateBitCast(arrVal, PointerType::getUnqual(
         ArrayType::get(contained, 0)));
 
-  std::cout << "tag 4" << std::endl;
   // Set initial values.
   {
     // TODO:  This is a repeat of the code in While::Codegen(). Instead,
@@ -819,6 +817,15 @@ File::File(string &name,
     Externs(externs),
     STypes(tys),
     FileModule(name, getGlobalContext()) {}
+
+void File::merge(File &otherFile) {
+  for (unsigned i=0, e=otherFile.Funcs.size(); i != e; ++i)
+    Funcs.push_back(otherFile.Funcs[i]);
+  for (unsigned i=0, e=otherFile.Externs.size(); i != e; ++i)
+    Externs.push_back(otherFile.Externs[i]);
+  for (unsigned i=0, e=otherFile.STypes.size(); i != e; ++i)
+    STypes.push_back(otherFile.STypes[i]);
+}
 
   /*
 TODO: in JIT pass experiment with:

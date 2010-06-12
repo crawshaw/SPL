@@ -1,5 +1,3 @@
-extern println(String): Int32
-
 struct Point = {
   x: Int32,
   y: Int32
