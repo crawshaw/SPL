@@ -1,0 +1,13 @@
+extern println(String): Int32
+
+struct Point = {
+  x: Int32,
+  y: Int32
+}
+
+io main(): Int32 = {
+  val x = Point(4,5);
+  //println(toString(x));
+  println("hi");
+  0
+}

@@ -18,9 +18,12 @@ cl::list<std::string> InputFilenames(
   cl::Positional, cl::desc("<program>"), cl::OneOrMore);
 
 extern "C" void *print;
+extern "C" void *println;
 void *FindVMFunc(const std::string &name) {
   if (name == "print")
     return print;
+  else if (name == "println")
+    return println;
   else
     return NULL;
 }
