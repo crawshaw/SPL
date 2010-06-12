@@ -58,7 +58,7 @@ std::vector<AST::Instance*>  instances;
 %token IO
 %token IMP
 %token EXTERN
-%token VAR
+%token TK_VAR
 %token TK_VAL
 %token IF
 %token ELSE
@@ -122,7 +122,8 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | STRING      { $$ = new AST::StringLiteral(*$1); }
     | exp '[' exp ']' { $$ = new AST::ArrayAccess(*$1, *$3); }
     | IF '(' exp ')' exp ELSE exp  { $$ = new AST::If(*$3, *$5, *$7); }
-    | TK_VAL IDENT '=' exp { $$ = new AST::Binding(*$2, *$4); }
+    | TK_VAL IDENT '=' exp { $$ = new AST::Binding(*$2, *$4, false); }
+    | TK_VAR IDENT '=' exp { $$ = new AST::Binding(*$2, *$4, true); }
     | IDENT '(' callargs ')' { $$ = new AST::Call(*$1, *$3); }
     | ARRAY '[' TIDENT ']' '(' exp ',' exp ')' {
       $$ = new AST::Array(*$3, *$6, *$8);
@@ -335,7 +336,7 @@ int yylex() {
   if (StrVal == "io")  return IO;
   if (StrVal == "imp") return IMP;
   if (StrVal == "extern") return EXTERN;
-  if (StrVal == "var") return VAR;
+  if (StrVal == "var") return TK_VAR;
   if (StrVal == "val") return TK_VAL;
   if (StrVal == "if")   return IF;
   if (StrVal == "else") return ELSE;

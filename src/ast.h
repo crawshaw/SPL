@@ -69,6 +69,7 @@ namespace SPL {
       virtual void setSType(SType *ty) { ThisType = ty; }
       virtual Type const *getType();
       virtual Value *LValuegen();
+      virtual bool isMutable() { return false; }
     };
 
     // TODO: more general literal
@@ -106,6 +107,7 @@ namespace SPL {
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual void RewriteBinding(string &OldName, string &NewName);
       virtual Value *LValuegen();
+      virtual bool isMutable() { return Binding->isMutable(); }
     };
 
     class UnaryOp : public Expr {
@@ -216,9 +218,11 @@ namespace SPL {
       Expr* Init;
       Register *InitReg;
       Expr* Body;
+      bool CanMutate;
     public:
-      Binding(const string &name, Expr& init)
-        : Name(name), Init(&init), InitReg(NULL), Body(NULL) {}
+      Binding(const string &name, Expr& init, bool canMutate)
+        : Name(name), Init(&init), InitReg(NULL),
+          Body(NULL), CanMutate(canMutate) {}
       void setBody(Expr &b) { Body = &b; }
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
@@ -227,6 +231,7 @@ namespace SPL {
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
       virtual void RewriteBinding(string &OldName, string &NewName);
+      virtual bool isMutable() { return CanMutate; }
       //virtual Type const *getType();
     };
 
@@ -284,13 +289,15 @@ namespace SPL {
       //AllocaInst *Alloca;
       Value *Alloca;
       Expr *Source;
+      bool CanMutate;
     public:
-      Register(string &name, Expr *expr)
-        : Name(name), Source(expr), Alloca(NULL) { }
+      Register(string &name, Expr *expr, bool canMutate)
+        : Name(name), Source(expr), Alloca(NULL), CanMutate(canMutate) { }
       virtual void Bind(map<string, Expr*> &) {}
       virtual void TypeInfer(TypeInferer &);
       virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
+      virtual bool isMutable() { return CanMutate; }
     };
 
     // Used to wrap a local LLVM register for a function argument.

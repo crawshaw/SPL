@@ -116,7 +116,7 @@ void Binding::Bind(map<string, Expr*> &NamedExprs) {
   Init->Bind(NamedExprs);
 
   Expr *OldExpr = NamedExprs[Name];
-  InitReg = new Register(Name, Init);
+  InitReg = new Register(Name, Init, CanMutate);
   InitReg->Bind(NamedExprs);
   NamedExprs[Name] = InitReg;
 
@@ -391,8 +391,13 @@ Value *Seq::Codegen() {
 }
 
 Value *Assign::Codegen() {
+  Value *LVal = LHS->LValuegen();
+  if (!LHS->isMutable()) {
+    std::cerr << "Attempting assignment to immutable value." << std::endl;
+    exit(1);
+  }
   Value *Val = RHS->Codegen();
-  Builder.CreateStore(Val, LHS->LValuegen());
+  Builder.CreateStore(Val, LVal);
   return Val;
 }
 

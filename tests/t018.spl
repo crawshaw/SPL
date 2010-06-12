@@ -1,8 +1,8 @@
 extern print(String): Int32
 
 io main(): Int32 = {
-  val x = 0;
-  val i = 1;
+  var x = 0;
+  var i = 1;
   while (i == 1) {
     print("running loop\n");
     if (x == 3) i = 0 else x = x + 1
