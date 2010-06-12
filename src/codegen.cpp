@@ -131,6 +131,11 @@ void If::Bind(map<string, Expr*> &NamedExprs) {
   Else->Bind(NamedExprs);
 }
 
+void While::Bind(map<string, Expr*> &NamedExprs) {
+  Cond->Bind(NamedExprs);
+  Body->Bind(NamedExprs);
+}
+
 void Closure::Bind(map<string,Expr*> &NamedExprs) {
   vector<string>::const_iterator it;
   for (it=ActivationRecordNames.begin(); it!=ActivationRecordNames.end(); ++it)
@@ -231,6 +236,10 @@ void If::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   Cond->FindCalls(calls);
   Then->FindCalls(calls);
   Else->FindCalls(calls);
+}
+void While::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
+  Cond->FindCalls(calls);
+  Body->FindCalls(calls);
 }
 void Call::FindCalls(vector<pair<Func*,vector<SType*> > > &calls) {
   for (unsigned i=0, e=Args.size(); i != e; ++i)
@@ -426,18 +435,14 @@ Value *Array::Codegen() {
   std::cout << "tag 4" << std::endl;
   // Set initial values.
   {
+    // TODO:  This is a repeat of the code in While::Codegen(). Instead,
+    //        let's just create an AST fragment for this that uses While,
+    //        and Codegen() it here.
     if (DefaultValue == 0)
       std::cout << "unexpected null default value." << std::endl;
     Value *defaultVal = DefaultValue->Codegen();
-    std::cout << "tag 4a" << std::endl;
     Value *StartVal = ConstantInt::get(getGlobalContext(), APInt(64, 0, true));
-    //  Builder.CreateAlloca(
-    //  Type::getInt64Ty(getGlobalContext()), 0, "loopvar");
-    std::cout << "tag 4b" << std::endl;
-    //Builder.CreateStore(
-    //  ConstantInt::get(getGlobalContext(), APInt(64, 0, true)), StartVal);
 
-    std::cout << "tag 5" << std::endl;
     // Make the new basic block for the loop header, inserting after current block.
     Function *TheFunction = Builder.GetInsertBlock()->getParent();
     BasicBlock *PreheaderBB = Builder.GetInsertBlock();
@@ -447,24 +452,18 @@ Value *Array::Codegen() {
     // Start insertion in LoopBB.
     Builder.SetInsertPoint(LoopBB);
     
-    std::cout << "tag 6" << std::endl;
     // Start the PHI node with an entry for Start.
     PHINode *Variable = Builder.CreatePHI(Type::getInt64Ty(getGlobalContext()));
-    std::cout << "tag 6a" << std::endl;
     Variable->addIncoming(StartVal, PreheaderBB);
-    std::cout << "tag 6b" << std::endl;
 
     // Emit the body of the loop.
     Value *arrayPos = Builder.CreateGEP(arrVal, Variable);
     arrayPos = Builder.CreateBitCast(arrayPos, PointerType::getUnqual(contained));
     Builder.CreateStore(defaultVal, arrayPos);
-    // TODO:
-    //if (Body->Codegen() == 0)
     
     // Emit the step value.
     Value *StepVal = ConstantInt::get(getGlobalContext(), APInt(64, 1, true));
     Value *NextVar = Builder.CreateAdd(Variable, StepVal, "nextvar");
-    std::cout << "tag 7" << std::endl;
 
     Value *EndCond = Builder.CreateICmpEQ(NextVar, arraySize, "loopcond");
 
@@ -472,14 +471,12 @@ Value *Array::Codegen() {
     BasicBlock *LoopEndBB = Builder.GetInsertBlock();
     BasicBlock *AfterBB = BasicBlock::Create(
       getGlobalContext(), "afterloop", TheFunction);
-    std::cout << "tag 8" << std::endl;
     
     // Insert the conditional branch into the end of LoopEndBB.
     Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
     
     // Any new code will be inserted in AfterBB.
     Builder.SetInsertPoint(AfterBB);
-    std::cout << "tag 9" << std::endl;
     
     // Add a new entry to the PHI node for the backedge.
     Variable->addIncoming(NextVar, LoopEndBB);
@@ -572,6 +569,29 @@ Value *If::Codegen() {
   pn->addIncoming(elseVal, elseBB);
 
   return pn;
+}
+
+Value *While::Codegen() {
+
+  Function *TheFunction = Builder.GetInsertBlock()->getParent();
+  BasicBlock *LoopBB = BasicBlock::Create(getGlobalContext(), "While", TheFunction);
+  Builder.CreateBr(LoopBB);
+  Builder.SetInsertPoint(LoopBB);
+  
+  Body->Codegen();
+  
+  // Emit the step value.
+  Value *EndCond = Cond->Codegen();
+
+  BasicBlock *LoopEndBB = Builder.GetInsertBlock();
+  BasicBlock *AfterBB = BasicBlock::Create(
+    getGlobalContext(), "afterloop", TheFunction);
+  
+  Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
+  
+  Builder.SetInsertPoint(AfterBB);
+  
+  return NULL;
 }
 
 void Closure::getArgRegs(vector<RegisterFunArg*> &args) {

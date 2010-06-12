@@ -61,8 +61,8 @@ std::vector<AST::Instance*>  instances;
 %token VAR
 %token TK_VAL
 %token IF
-%token THEN
 %token ELSE
+%token WHILE
 %token STRUCT
 %token UNION
 %token CLASS
@@ -121,12 +121,15 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | NUMBER      { $$ = new AST::Number($1); }
     | STRING      { $$ = new AST::StringLiteral(*$1); }
     | exp '[' exp ']' { $$ = new AST::ArrayAccess(*$1, *$3); }
-    | IF exp THEN exp ELSE exp  { $$ = new AST::If(*$2, *$4, *$6); }
+    | IF '(' exp ')' exp ELSE exp  { $$ = new AST::If(*$3, *$5, *$7); }
     | TK_VAL IDENT '=' exp { $$ = new AST::Binding(*$2, *$4); }
     | IDENT '(' callargs ')' { $$ = new AST::Call(*$1, *$3); }
-    | ARRAY '[' TIDENT ']' '(' exp ',' exp ')' { $$ = new AST::Array(*$3, *$6, *$8); }
+    | ARRAY '[' TIDENT ']' '(' exp ',' exp ')' {
+      $$ = new AST::Array(*$3, *$6, *$8);
+    }
     | TIDENT '(' callargs ')' { $$ = new AST::Constructor(*$1, *$3); }
     | fun { $$ = $1; }
+    | WHILE '(' exp ')' exp { $$ = new AST::While(*$3, *$5); }
 
 exps  : { $$ = new vector<AST::Expr*>(); }
       | exps ';' exp { $$ = $1; $$->push_back($3); }
@@ -335,8 +338,8 @@ int yylex() {
   if (StrVal == "var") return VAR;
   if (StrVal == "val") return TK_VAL;
   if (StrVal == "if")   return IF;
-  if (StrVal == "then") return THEN;
   if (StrVal == "else") return ELSE;
+  if (StrVal == "while") return WHILE;
   if (StrVal == "struct") return STRUCT;
   if (StrVal == "union") return UNION;
   if (StrVal == "class") return CLASS;

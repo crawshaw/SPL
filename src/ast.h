@@ -245,6 +245,18 @@ namespace SPL {
       //virtual Type const *getType();
     };
 
+    class While : public Expr {
+      Expr *Cond;
+      Expr *Body;
+    public:
+      While(Expr& cond, Expr& body):
+        Cond(&cond), Body(&body) {}
+      virtual void Bind(map<string, Expr*> &);
+      virtual void TypeInfer(TypeInferer &);
+      virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
+      virtual Value *Codegen();
+    };
+
     class Call : public Expr {
       string CalleeName;
       Expr *Callee; // Either a Closure or a Func. TODO: Subclass Call?
@@ -453,6 +465,16 @@ namespace SPL {
       const string getName() { return Name; }
 
       static const map<string,SType*> &Builtins();
+    };
+
+    // TODO:  hide all of these classes and use some
+    //        static getters, a la LLVM.
+
+    class SVoid : public SType {
+    public:
+      SVoid(): SType("Void") {}
+      virtual Type const *getType();
+      virtual void dump();
     };
 
     class SPrimitive : public SType {

@@ -6,9 +6,9 @@ using namespace llvm;
 
 namespace SPL { namespace AST {
 
-void SPrimitive::dump() {
-  std::cerr << "SPrimitive::" << Name;
-}
+
+void SVoid::dump() { std::cerr << "SVoid::" << Name; }
+void SPrimitive::dump() { std::cerr << "SPrimitive::" << Name; }
 
 void SStructType::dump() {
   std::cerr << "SStructType::" << Name << " {" << std::endl;
@@ -57,6 +57,7 @@ void SGenericType::dump() {
 /////////////////////////////////////////////////////////////////////
 
 
+Type const* SVoid::getType() { return Type::getVoidTy( getGlobalContext()); }
 Type const* Int8 ::getType() { return Type::getInt8Ty( getGlobalContext()); }
 Type const* Int16::getType() { return Type::getInt16Ty(getGlobalContext()); }
 Type const* Int32::getType() { return Type::getInt32Ty(getGlobalContext()); }

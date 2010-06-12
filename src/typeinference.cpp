@@ -84,6 +84,11 @@ void If::TypeInfer(TypeInferer &inferer) {
   inferer.eqn(this,Then);
   inferer.eqn(this,Else);
 }
+void While::TypeInfer(TypeInferer &inferer) {
+  Cond->TypeInfer(inferer);
+  Body->TypeInfer(inferer);
+  inferer.ty(this, new SVoid());
+}
 void Call::TypeInfer(TypeInferer &inferer) {
   Func *fn;
   if (Closure *cl = dynamic_cast<Closure*>(Callee)) {
