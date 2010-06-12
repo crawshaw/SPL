@@ -193,6 +193,7 @@ namespace SPL {
       virtual Value *Codegen();
       virtual Value *LValuegen();
       Expr *getSource() { return LHS; }
+      virtual bool isMutable() { return true; }
     };
 
     class Member : public Expr {
@@ -209,6 +210,8 @@ namespace SPL {
       virtual Value *Codegen();
       virtual Value *LValuegen();
       Expr *getSource() { return Source; }
+      // TODO: check getSource()->getSType() for qualifier
+      virtual bool isMutable() { return true; }
     };
 
     class Register;
