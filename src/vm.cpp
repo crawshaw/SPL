@@ -9,6 +9,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetSelect.h"
+#include "llvm/Target/TargetData.h"
+#include "llvm/PassManager.h"
 
 #include <dlfcn.h>
 
@@ -16,6 +18,7 @@ using namespace llvm;
 
 cl::list<std::string> InputFilenames(
   cl::Positional, cl::desc("<program>"), cl::OneOrMore);
+cl::opt<bool> Optimize("O", cl::desc("Optimize"));
 
 extern "C" void *print;
 void *FindVMFunc(const std::string &name) {
@@ -54,6 +57,17 @@ int main(int argc, char** argv) {
   engine->InstallLazyFunctionCreator(FindVMFunc);
   //std::cerr << "symbolSearching disabled: " << engine->isSymbolSearchingDisabled()
   //  << std::endl;
+
+  if (Optimize) {
+    // TODO: experiment, what exactly does target data optimization give us,
+    //       do we need to run other optimization passes after it?
+    FunctionPassManager fpm(module);
+    fpm.add(new TargetData(*engine->getTargetData()));
+    fpm.doInitialization();
+    iplist<Function> &fns = module->getFunctionList();
+    for (iplist<Function>::iterator it = fns.begin(); it != fns.end(); it++)
+      fpm.run(*it);
+  }
 
   // Execute the function `main'.
   Function *f = module->getFunction("main");

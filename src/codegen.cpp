@@ -827,18 +827,6 @@ void File::merge(File &otherFile) {
     STypes.push_back(otherFile.STypes[i]);
 }
 
-  /*
-TODO: in JIT pass experiment with:
-
-  FunctionPassManager fpm(&FileModule);
-  fpm.add(new TargetData(*TheExecutionEngine->getTargetData()));
-  fpm.doInitialization();
-  iplist<Function> &fns = TheModule->getFunctionList();
-  for (iplist<Function>::iterator it = fns.begin(); it != fns.end(); it++)
-    fpm.run(*it);
-
-*/
-
 void File::optimize() {
   FunctionPassManager fpm(&FileModule);
   fpm.doInitialization();
