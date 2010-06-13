@@ -6,6 +6,7 @@ using namespace llvm;
 
 namespace SPL { namespace AST {
 
+extern map<string,SType*> NamedTypes;
 
 void SVoid::dump() { std::cerr << "SVoid::" << Name; }
 void SPrimitive::dump() { std::cerr << "SPrimitive::" << Name; }
@@ -63,7 +64,7 @@ Type const* Int16::getType() { return Type::getInt16Ty(getGlobalContext()); }
 Type const* Int32::getType() { return Type::getInt32Ty(getGlobalContext()); }
 Type const* Int64::getType() { return Type::getInt64Ty(getGlobalContext()); }
 void SStructType::Bind(
-    vector<string> &ResolutionPath, const map<string, SType*> &NamedTypes) {
+    vector<string> &ResolutionPath, map<string, SType*> &NamedTypes) {
   if (ElementSTypes.size() == ElementSTypeNames.size())
     return; // We are bound.
   for (unsigned i=0, e=ResolutionPath.size(); i != e; ++i) {
@@ -78,7 +79,7 @@ void SStructType::Bind(
 
   ResolutionPath.push_back(Name);
   for (unsigned i=0, e=ElementSTypeNames.size(); i != e; ++i) {
-    SType *ty = NamedTypes.find(ElementSTypeNames[i])->second;
+    SType *ty = ElementSTypeNames[i]->Resolve(NamedTypes);
     if (ty == NULL) {
       std::cerr << "Unknown Type: " << ElementSTypeNames[i]
         << " in field of " << Name << std::endl;
@@ -96,19 +97,32 @@ void SStructType::Bind(
 }
 Type const *SStructType::getPassType() { return ThisType; }
 Type const *SStructType::getType() { return PointerType::getUnqual(ThisType); }
-void SArray::Bind(vector<string> &, const map<string, SType*> &) {}
-SArray::SArray(SType *ty): SStructType("Array"), Contained(ty) {
+void SArray::Bind(vector<string> &, map<string, SType*> &) {
+  SType *ty = Contained;
+  if (ty == NULL) {
+    std::cerr << "Array type parameter undefined." << std::endl;
+    exit(1);
+  }
+
   // For show, fill these.
   ElementNames.push_back("length");
-  ElementSTypeNames.push_back("Int32");
+  ElementSTypeNames.push_back(new TypePlaceholder("Int32"));
   ElementNames.push_back("data");
-  ElementSTypeNames.push_back(ty->getName());
+  ElementSTypeNames.push_back(new TypePlaceholder(ty->getName()));
 
   vector<const Type *> tys;
   tys.push_back(Type::getInt32Ty(getGlobalContext()));
   tys.push_back(PointerType::getUnqual(ArrayType::get(ty->getType(), 0)));
   ThisType = StructType::get(getGlobalContext(), tys);
 }
+SType* SArray::ParamRebind(vector<SType*> &prms) {
+  assert(prms.size() == 1);
+  SArray *sty = new SArray(prms[0]);
+  vector<string> x1;
+  sty->Bind(x1, NamedTypes);
+  return sty;
+}
+
 Type const *SFunctionType::getType() { return getFunctionType(); }
 Type const *SPtr::getType() { return PointerType::getUnqual(Ref->getType()); }
 Type const *SBool::getType() { return Type::getInt1Ty(getGlobalContext()); }
@@ -120,6 +134,21 @@ Type const *SGenericType::getType() {
   }
 }
 
+/////////////////////////////////////////////////////////////////////
+
+SType *TypePlaceholder::Resolve(map<string,SType*> &NamedTypes) {
+  vector<SType*> resolvedParams;
+  for (unsigned i=0, e=Params.size(); i != e; ++i)
+    resolvedParams.push_back(Params[i]->Resolve(NamedTypes));
+  return NamedTypes[Name]->ParamRebind(resolvedParams);
+}
+
+SGenericType *TypePlaceholder::ResolveAsGeneric(map<string,SType*> &NamedTypes) {
+  vector<SType*> resolvedParams;
+  for (unsigned i=0, e=Params.size(); i != e; ++i)
+    resolvedParams.push_back(Params[i]->Resolve(NamedTypes));
+  return new SGenericType(Name, resolvedParams);
+}
 
 /////////////////////////////////////////////////////////////////////
 
@@ -131,5 +160,18 @@ unsigned SStructType::getIndex(const string &name) {
   return -1;
 }
 
+map<string,SType*> SType::BuiltinsMap;
+const map<string,SType*> &SType::Builtins() {
+  if (BuiltinsMap.size() == 0) {
+    BuiltinsMap["Bool"]  = new SBool();
+    BuiltinsMap["Int8"]  = new Int8();
+    BuiltinsMap["Int16"] = new Int16();
+    BuiltinsMap["Int32"] = new Int32();
+    BuiltinsMap["Int64"] = new Int64();
+    BuiltinsMap["String"] = new SString();
+    BuiltinsMap["Array"] = new SArray(NULL);
+  }
+  return BuiltinsMap;
+}
 
 }};

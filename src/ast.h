@@ -36,6 +36,7 @@ namespace SPL {
     class SFunctionType;
     class SGenericType;
     class SArray;
+    class TypePlaceholder;
 
     class TypeInferer {
       multimap<Expr*, Expr*>  eqns;
@@ -319,14 +320,14 @@ namespace SPL {
     //        Closure, to avoid some dynamic_cast
     class Func: public Expr {
       string Name;
-      vector<string>          Generics;
-      vector<SGenericType*>   GenericPlaceholders;
+      vector<TypePlaceholder*> Generics;
+      vector<SGenericType*> GenericPlaceholders;
       bool GenericsAreBound;
       vector<string> Args;
-      vector<string*> ArgSTypeNames;
-      vector<SType*> ArgSTypes; // TODO: redundant, just use ThisType.
+      vector<TypePlaceholder*> ArgSTypeNames;
+      vector<SType*> ArgSTypes;
       vector<RegisterFunArg*> ArgRegs;
-      const string *RetSTypeName;
+      TypePlaceholder *RetSTypeName;
       SType *RetSType;
       Expr* Body;
       Expr* Context; // Only valid prior to lambda lifting.
@@ -338,36 +339,37 @@ namespace SPL {
     public:
       // XXX what a mess.
       Func(const string &name,
-          const vector<string> &argstys,
-          const string &retsty):
+          const vector<TypePlaceholder*> &argstys,
+          TypePlaceholder &retsty,
+          const vector<TypePlaceholder*> &generics):
           Name(name), GenericsAreBound(false),
           RetSTypeName(&retsty), RetSType(NULL),
-          Body(NULL), Context(NULL),
+          Body(NULL), Context(NULL), Generics(generics),
           Pureness(FunIO) {
         for (unsigned i=0, e=argstys.size(); i!=e; ++i){
           Args.push_back("$");
-          ArgSTypeNames.push_back(new string(argstys[i]));
+          ArgSTypeNames.push_back(argstys[i]);
         }
       }
 
       Func(const string &name,
-          const vector<string> &generics,
-          const vector<pair<string,string*>*> &args,
-          const string* retSType,
+          const vector<TypePlaceholder*> &generics,
+          const vector<pair<string,TypePlaceholder*> > &args,
+          TypePlaceholder &retSType,
           Expr &body, Expr *context, Purity purity):
           Name(name), Body(&body), Context(context),
-          RetSTypeName(retSType), RetSType(NULL),
+          RetSTypeName(&retSType), RetSType(NULL),
           Pureness(purity),
           Generics(generics), GenericsAreBound(false) {
         for (unsigned i=0, e=args.size(); i != e; ++i) {
-          Args.push_back(args[i]->first);
-          ArgSTypeNames.push_back(args[i]->second);
+          Args.push_back(args[i].first);
+          ArgSTypeNames.push_back(args[i].second);
         }
       }
       Func(const string &name,
           const vector<string> &args,
-          const vector<string*> &argSTypes,
-          const string* retSType,
+          const vector<TypePlaceholder*> &argSTypes,
+          TypePlaceholder* retSType,
           Expr &body, Expr *context, Purity purity):
           Name(name), Args(args), ArgSTypeNames(argSTypes),
           Body(&body), Context(context),
@@ -401,9 +403,10 @@ namespace SPL {
     public:
       Extern(
           const string &name, 
-          const vector<string> &args,
-          const string &retSType):
-          Func(name, args, retSType) {}
+          const vector<TypePlaceholder*> &generics,
+          const vector<TypePlaceholder*> &args,
+          TypePlaceholder &retSType):
+          Func(name, args, retSType, generics) {}
 
       virtual Function *getFunction();
       virtual Value *Codegen() { return getFunction(); }
@@ -430,16 +433,16 @@ namespace SPL {
     };
 
     class Array : public Expr {
-      const string STypeName;
+      TypePlaceholder* STypeName;
       SType *Contained;
       Expr *SizeExpr;
       Expr *DefaultValue;
     public:
       Array(
-          const string &stName,
+          TypePlaceholder &stName,
           Expr &sizeExpr,
           Expr &defaultVal):
-        STypeName(stName),
+        STypeName(&stName),
         SizeExpr(&sizeExpr),
         DefaultValue(&defaultVal) {}
       virtual void Bind(map<string, Expr*> &);
@@ -450,29 +453,51 @@ namespace SPL {
 
     class Constructor : public Expr {
       const string STypeName;
+      SStructType *ThisType;
+      vector<TypePlaceholder*> Params;
       vector<Expr*> Args;
     public:
       Constructor(
           const string &stName,
+          vector<TypePlaceholder*> &params,
           const vector<Expr*> &args)
-        : STypeName(stName), Args(args) {}
+        : STypeName(stName), Params(params), Args(args) {}
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
       virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
       virtual Value *Codegen();
     };
 
+    class TypePlaceholder {
+      const string Name;
+      vector<TypePlaceholder*> Params;
+      // TODO: const string TypeClass;
+    public:
+      TypePlaceholder(const string &name): Name(name) {}
+      TypePlaceholder(const string &name,
+          const vector<TypePlaceholder*> params):
+        Name(name), Params(params) {}
+      const string &getName() { return Name; }
+      const vector<TypePlaceholder*> getParams() { return Params; }
+      SType *Resolve(map<string,SType*> &);
+      SGenericType *ResolveAsGeneric(map<string,SType*> &);
+    };
+
     class SType {
       static map<string,SType*> BuiltinsMap;
     protected:
       const string Name;
+      // TODO: vector<SType*> Params;
     public:
       SType(const string &name): Name(name) {}
-      virtual void Bind(vector<string> &, const map<string, SType*> &) {}
+      virtual void Bind(vector<string> &, map<string, SType*> &) {}
       virtual Type const *getType() = 0;
       virtual Type const *getPassType() { return getType(); }
       virtual void dump() = 0;
-      const string getName() { return Name; }
+      const string &getName() { return Name; }
+      virtual SType *ParamRebind(vector<SType*> &prms) {
+        return this;
+      }
 
       static const map<string,SType*> &Builtins();
     };
@@ -508,20 +533,20 @@ namespace SPL {
 
     class SStructType : public SType {
     protected:
-      vector<string>  ElementNames;
-      vector<string>  ElementSTypeNames;
-      vector<SType*>  ElementSTypes;
+      vector<string> ElementNames;
+      vector<TypePlaceholder*> ElementSTypeNames;
+      vector<SType*> ElementSTypes;
       Type * ThisType;
     public:
       SStructType(const string &name): SType(name), ThisType(NULL) {}
-      SStructType(const string &name, const vector<pair<string,string*>*> &els)
+      SStructType(const string &name, const vector<pair<string,TypePlaceholder*> > &els)
           : SType(name), ThisType(NULL) {
         for (unsigned i=0, e=els.size(); i != e; ++i) {
-          ElementNames.push_back(els[i]->first);
-          ElementSTypeNames.push_back(string(*els[i]->second));
+          ElementNames.push_back(els[i].first);
+          ElementSTypeNames.push_back(els[i].second);
         }
       }
-      virtual void Bind(vector<string> &, const map<string, SType*> &);
+      virtual void Bind(vector<string> &, map<string, SType*> &);
       virtual Type const *getType();
       virtual Type const *getPassType();
       virtual void dump();
@@ -547,12 +572,14 @@ namespace SPL {
     //        first element. Learn more about LLVM
     //        before doing this.
     class SArray : public SStructType {
-      SType *Contained;
+      SType *Contained; // TODO: use SType::Params
     public:
-      SArray(SType *);
+      SArray(SType *ty):
+        SStructType("Array"), Contained(ty) {}
       SType *getContained() { return Contained; }
-      virtual void Bind(vector<string> &, const map<string, SType*> &);
+      virtual void Bind(vector<string> &, map<string, SType*> &);
       virtual void dump();
+      virtual SType* ParamRebind(vector<SType*> &);
     };
 
     // Stored as { i32, [ 0 x i8]* }*, with the strings
@@ -564,8 +591,13 @@ namespace SPL {
       vector<SType*>  ElementSTypes;
       Type * ThisType;
     public:
-      SString(): SArray(new Int8()) {}
+      SString(): SArray(new Int8()) {
+        vector<string> x;
+        map<string, SType*> y;
+        Bind(x,y);
+      }
       virtual void dump();
+      virtual SType* ParamRebind(vector<SType*> &) {}
 
       static SString *get() {
         if (Singleton == NULL)
@@ -601,8 +633,11 @@ namespace SPL {
     class SGenericType : public SType {
       unsigned id;
       SType *Binding;
+      vector<SType*> Params;
     public:
-      SGenericType(const string &name): SType(name), Binding(NULL) {
+      SGenericType(const string &name,
+          vector<SType*> &params)
+          : SType(name), Binding(NULL), Params(params) {
         static unsigned gid = 0;
         id = gid++;
       }

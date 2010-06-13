@@ -6,3 +6,5 @@ io println(str: String): Int32 = {
   print(str);
   putchar(10) // TODO: add grammar support for chars
 }
+
+extern length<T>(Array[T]): Int32

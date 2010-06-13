@@ -24,19 +24,6 @@ static Module *TheModule;
 // TODO: pass to Bind() along with NamedExprs.
 map<string,SType*> NamedTypes;
 
-map<string,SType*> SType::BuiltinsMap;
-const map<string,SType*> &SType::Builtins() {
-  if (BuiltinsMap.size() == 0) {
-    BuiltinsMap["Bool"]  = new SBool();
-    BuiltinsMap["Int8"]  = new Int8();
-    BuiltinsMap["Int16"] = new Int16();
-    BuiltinsMap["Int32"] = new Int32();
-    BuiltinsMap["Int64"] = new Int64();
-    BuiltinsMap["String"] = new SString();
-  }
-  return BuiltinsMap;
-}
-
 
 /////////////////////////////////////////////////////////////////////
 
@@ -103,6 +90,11 @@ void Member::Bind(map<string, Expr*> &NamedExprs) {
 }
 
 void Array::Bind(map<string, Expr*> &NamedExprs) {
+  Contained = STypeName->Resolve(NamedTypes);
+  if (Contained == NULL) {
+    std::cerr << "Unable to resolve array ty: " << STypeName->getName() << "\n";
+    exit(1);
+  }
   SizeExpr->Bind(NamedExprs);
   DefaultValue->Bind(NamedExprs);
 }
@@ -110,6 +102,22 @@ void Array::Bind(map<string, Expr*> &NamedExprs) {
 void Constructor::Bind(map<string, Expr*> &NamedExprs) {
   for (unsigned i=0, e=Args.size(); i != e; ++i)
     Args[i]->Bind(NamedExprs);
+  vector<SType*> paramTys;
+  for (unsigned i=0, e=Params.size(); i != e; ++i)
+    paramTys.push_back(Params[i]->Resolve(NamedTypes));
+  SType *ty = NamedTypes[STypeName]->ParamRebind(paramTys);
+  if (ty == NULL) {
+    std::cerr << "Unknown type: " << STypeName << std::endl;
+    exit(1);
+  }
+  SStructType *sty = dynamic_cast<SStructType*>(ty);
+  if (sty == NULL) {
+    std::cerr << "Constructor " << STypeName << " bound to wrong kind: ";
+    ty->dump();
+    std::cerr << std::endl;
+    exit(1);
+  }
+  ThisType = sty;
 }
 
 void Binding::Bind(map<string, Expr*> &NamedExprs) {
@@ -163,21 +171,21 @@ void Func::Bind(map<string, Expr*> &NamedExprs) {
 
   vector<SType*> oldTypeBindings;
   for (unsigned i=0, e=Generics.size(); i != e; ++i) {
-    SGenericType *ty = new SGenericType(Generics[i]);
+    SGenericType *ty = Generics[i]->ResolveAsGeneric(NamedTypes);
     GenericPlaceholders.push_back(ty);
-    oldTypeBindings.push_back(NamedTypes[Generics[i]]);
-    NamedTypes[Generics[i]] = ty;
+    oldTypeBindings.push_back(NamedTypes[ty->getName()]);
+    NamedTypes[ty->getName()] = ty;
   }
 
-  RetSType = NamedTypes[*RetSTypeName];
+  RetSType = RetSTypeName->Resolve(NamedTypes);
   if (RetSType == NULL) {
-    std::cerr << "Unknown return type `" << *RetSTypeName <<
+    std::cerr << "Unknown return type `" << RetSTypeName->getName() <<
       "' on function `" << Name << "'." << std::endl;
     exit(1);
   }
 
   for (unsigned i=0, e=Args.size(); i != e; ++i) {
-    SType *ty = NamedTypes[*ArgSTypeNames[i]];
+    SType *ty = ArgSTypeNames[i]->Resolve(NamedTypes);
     if (ty == NULL) {
       std::cerr << "Unknown argument type `" << ArgSTypeNames[i] <<
         "' on function `" << Name << "'." << std::endl;
@@ -187,7 +195,7 @@ void Func::Bind(map<string, Expr*> &NamedExprs) {
   }
 
   for (unsigned i=0, e=Generics.size(); i != e; ++i)
-    NamedTypes[Generics[i]] = NULL;
+    NamedTypes[Generics[i]->getName()] = NULL;
 
   setSType(new SFunctionType(Name, ArgSTypes, RetSType));
 
@@ -208,7 +216,7 @@ void Func::Bind(map<string, Expr*> &NamedExprs) {
     NamedExprs[Args[i]] = oldBindings[i];
 
   for (unsigned i=0, e=Generics.size(); i != e; ++i)
-    NamedTypes[Generics[i]] = oldTypeBindings[i];
+    NamedTypes[Generics[i]->getName()] = oldTypeBindings[i];
 }
 
 

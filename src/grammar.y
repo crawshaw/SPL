@@ -16,7 +16,7 @@ std::vector<AST::Instance*>  instances;
 %}
 
 %locations
-%token IDENT TIDENT NUMBER STRING ARRAY
+%token IDENT TIDENT NUMBER STRING
 
 %union {
   AST::Expr *exp;
@@ -24,9 +24,10 @@ std::vector<AST::Instance*>  instances;
   AST::Extern *ext;
   int value;
   string *ident;
-  vector<pair<string,string*>*> *args;
+  vector<pair<string,AST::TypePlaceholder*> > *args;
   vector<AST::Expr*> *callargs;
-  vector<string> *templates;
+  vector<AST::TypePlaceholder*> *types;
+  AST::TypePlaceholder *typl;
   AST::SType *type;
   AST::Class *cls;
   AST::Instance *instance;
@@ -48,9 +49,10 @@ std::vector<AST::Instance*>  instances;
 %type <type>      sunion
 %type <cls>       class
 %type <instance>  instance
-%type <templates> templates
-%type <templates> templateSet
-%type <templates> targs
+%type <types>     templateSet
+%type <types>     typeSet
+%type <types>     types
+%type <typl>      type
 %type <purity>    funDef
 
 // TODO: add TK_
@@ -76,6 +78,10 @@ std::vector<AST::Instance*>  instances;
 %token ':'
 %left '+'
 %left '*'
+%left '['
+%left ']'
+%left '<'
+%left '>'
 %%
 
 top :
@@ -125,10 +131,16 @@ exp : exp '+' exp { $$ = new AST::Add(*$1, *$3); }
     | TK_VAL IDENT '=' exp { $$ = new AST::Binding(*$2, *$4, false); }
     | TK_VAR IDENT '=' exp { $$ = new AST::Binding(*$2, *$4, true); }
     | IDENT '(' callargs ')' { $$ = new AST::Call(*$1, *$3); }
-    | ARRAY '[' TIDENT ']' '(' exp ',' exp ')' {
-      $$ = new AST::Array(*$3, *$6, *$8);
+    | TIDENT typeSet '(' callargs ')' {
+      // TODO: do this yucky stuff somewhere else. give it a phase?
+      if (*$1 == "Array") {
+        assert($2->size() == 1);
+        assert($4->size() == 2);
+        $$ = new AST::Array(*(*$2)[0], *(*$4)[0], *(*$4)[1]);
+      } else {
+        $$ = new AST::Constructor(*$1, *$2, *$4);
+      }
     }
-    | TIDENT '(' callargs ')' { $$ = new AST::Constructor(*$1, *$3); }
     | fun { $$ = $1; }
     | WHILE '(' exp ')' exp { $$ = new AST::While(*$3, *$5); }
 
@@ -136,8 +148,8 @@ exps  : { $$ = new vector<AST::Expr*>(); }
       | exps ';' exp { $$ = $1; $$->push_back($3); }
       | exp { $$ = new vector<AST::Expr*>(); $$->push_back($1); }
 
-fun : funDef IDENT templateSet '(' args ')' ':' TIDENT '=' exp {
-      $$ = new AST::Func(*$2, *$3, *$5, $8, *$10, NULL, $1);
+fun : funDef IDENT templateSet '(' args ')' ':' type '=' exp {
+      $$ = new AST::Func(*$2, *$3, *$5, *$8, *$10, NULL, $1);
     }
     /* TODO: when we have more than local type inference working, invoke.
     | funDef IDENT '(' args ')' '=' '{' exp '}' {
@@ -145,33 +157,37 @@ fun : funDef IDENT templateSet '(' args ')' ':' TIDENT '=' exp {
     }
     */
 
-extern : EXTERN IDENT '(' targs ')' ':' TIDENT { $$ = new AST::Extern(*$2,*$4,*$7); }
+extern: EXTERN IDENT templateSet '(' types ')' ':' type {
+        $$ = new AST::Extern(*$2,*$3,*$5,*$8);
+      }
 
 funDef : DEF  { $$ = AST::Pure }
        | IO   { $$ = AST::FunIO }
        | IMP  { $$ = AST::Impure }
 
-templateSet : { $$ = new vector<string>(); }
-          | '<' templates '>' { $$ = $2; }
+templateSet : { $$ = new vector<AST::TypePlaceholder*>(); }
+          | '<' types '>' { $$ = $2; }
 
-templates : { $$ = new vector<string>(); }
-          | templates ',' TIDENT { $1->push_back(*$3); $$ = $1; }
-          | TIDENT { $$ = new vector<string>(); $$->push_back(*$1); }
+typeSet   : { $$ = new vector<AST::TypePlaceholder*>(); }
+          | '[' types ']' { $$ = $2; }
 
-targs : { $$ = new vector<string>(); }
-      | TIDENT {
-        $$ = new vector<string>();
-        $$->push_back(*$1);
+type : TIDENT '[' types ']' { $$ = new AST::TypePlaceholder(*$1, *$3); }
+     | TIDENT { $$ = new AST::TypePlaceholder(*$1); }
+
+types : { $$ = new vector<AST::TypePlaceholder*>(); }
+      | type {
+        $$ = new vector<AST::TypePlaceholder*>();
+        $$->push_back($1);
       }
-      | targs ',' TIDENT {
-        $1->push_back(*$3);
+      | types ',' type {
+        $1->push_back($3);
         $$ = $1;
       }
 
-args  : {$$ = new vector<pair<string,string*>*>(); }
-      | IDENT ':' TIDENT {
-        $$ = new vector<pair<string,string*>*>();
-        $$->push_back(new pair<string,string*>(*$1, $3));
+args  : {$$ = new vector<pair<string, AST::TypePlaceholder*> >(); }
+      | IDENT ':' type {
+        $$ = new vector<pair<string, AST::TypePlaceholder*> >();
+        $$->push_back(pair<string, AST::TypePlaceholder*>(*$1, $3));
       }
       /* TODO
       | IDENT {
@@ -179,8 +195,8 @@ args  : {$$ = new vector<pair<string,string*>*>(); }
         $$->push_back(new pair<string,string*>(*$1, NULL));
       }
       */
-      | args ',' IDENT ':' TIDENT {
-        $1->push_back(new pair<string,string*>(*$3, $5));
+      | args ',' IDENT ':' type {
+        $1->push_back(pair<string, AST::TypePlaceholder*>(*$3, $5));
         $$ = $1;
       }
       /* TODO
@@ -345,7 +361,6 @@ int yylex() {
   if (StrVal == "union") return UNION;
   if (StrVal == "class") return CLASS;
   if (StrVal == "instance") return INSTANCE;
-  if (StrVal == "Array") return ARRAY;
   if (StrVal == "==") return EQ;
   if (StrVal == "=") return '=';
   if (StrVal == "++") return PP;

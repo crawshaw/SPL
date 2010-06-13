@@ -150,31 +150,21 @@ void Array::TypeInfer(TypeInferer &inferer) {
   SizeExpr->TypeInfer(inferer);
   DefaultValue->TypeInfer(inferer);
 
-  SType *ty = NamedTypes[STypeName];
+  SType *ty = Contained;
   if (ty == NULL) {
     std::cerr << "Unknown type for Array: " << STypeName << std::endl;
     exit(1);
   }
-  inferer.ty(this, new SArray(ty));
-  Contained = ty;
+  SArray *sty = new SArray(ty);
+  vector<string> x1;
+  map<string, SType*> x2;
+  sty->Bind(x1, x2);
+  inferer.ty(this, sty);
 }
 void Constructor::TypeInfer(TypeInferer &inferer) {
-  SType *ty = NamedTypes[STypeName];
-  if (ty == NULL) {
-    std::cerr << "Unknown type: " << STypeName << std::endl;
-    exit(1);
-  }
-  SStructType *sty = dynamic_cast<SStructType*>(ty);
-  if (sty == NULL) {
-    std::cerr << "Constructor " << STypeName << " bound to wrong kind: ";
-    ty->dump();
-    std::cerr << std::endl;
-    exit(1);
-  }
-  inferer.ty(this, sty);
-
+  inferer.ty(this, ThisType);
   vector<SType*> argTys;
-  sty->getElementSTypes(argTys);
+  ThisType->getElementSTypes(argTys);
   for (unsigned i=0, e=Args.size(); i != e; ++i) {
     Args[i]->TypeInfer(inferer);
     inferer.ty(Args[i], argTys[i]); // TODO: check for conflict in tys.
