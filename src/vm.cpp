@@ -21,9 +21,12 @@ cl::list<std::string> InputFilenames(
 cl::opt<bool> Optimize("O", cl::desc("Optimize"));
 
 extern "C" void *print;
+extern "C" void *length;
 void *FindVMFunc(const std::string &name) {
   if (name == "print")
     return print;
+  else if (name == "length")
+    return length;
   else
     return NULL;
 }

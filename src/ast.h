@@ -572,6 +572,7 @@ namespace SPL {
     //        first element. Learn more about LLVM
     //        before doing this.
     class SArray : public SStructType {
+      static Type *GenericTypeSingleton;
       SType *Contained; // TODO: use SType::Params
     public:
       SArray(SType *ty):
@@ -580,6 +581,7 @@ namespace SPL {
       virtual void Bind(vector<string> &, map<string, SType*> &);
       virtual void dump();
       virtual SType* ParamRebind(vector<SType*> &);
+      static Type *GenericType();
     };
 
     // Stored as { i32, [ 0 x i8]* }*, with the strings
@@ -597,13 +599,9 @@ namespace SPL {
         Bind(x,y);
       }
       virtual void dump();
-      virtual SType* ParamRebind(vector<SType*> &) {}
+      virtual SType* ParamRebind(vector<SType*> &) { return this; }
 
-      static SString *get() {
-        if (Singleton == NULL)
-          Singleton = new SString();
-        return Singleton;
-      }
+      static SString *get();
     };
 
     class SFunctionType : public SType {

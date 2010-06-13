@@ -1,6 +1,6 @@
 COMPILER_OBJS := \
   grammar.o codegen.o lambdalift.o typeinference.o stypes.o compiler.o
-VM_OBJS := print.o vm.o
+VM_OBJS := prelude.o vm.o
 REPL_OBJS := \
   grammar.o codegen.o lambdalift.o typeinference.o stypes.o
 

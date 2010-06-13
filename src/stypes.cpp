@@ -31,8 +31,6 @@ void SStructType::dump() {
 void SArray::dump()  { std::cerr << "SArray"; }
 void SString::dump() { std::cerr << "SString"; }
 
-SString *SString::Singleton = NULL;
-
 void SFunctionType::dump() {
   std::cerr << "SFunctionType::" << Name << "(";
   for (unsigned i=0, e=Args.size(); i != e; ++i) {
@@ -172,6 +170,26 @@ const map<string,SType*> &SType::Builtins() {
     BuiltinsMap["Array"] = new SArray(NULL);
   }
   return BuiltinsMap;
+}
+
+SString *SString::Singleton = NULL;
+SString* SString::get() {
+  if (Singleton == NULL)
+    Singleton = new SString();
+  return Singleton;
+}
+
+Type *SArray::GenericTypeSingleton = NULL;
+Type* SArray::GenericType() {
+  if (GenericTypeSingleton == NULL) {
+    const Type *i8 = Type::getInt8PtrTy(getGlobalContext());
+    vector<const Type *> tys;
+    tys.push_back(Type::getInt32Ty(getGlobalContext()));
+    tys.push_back(PointerType::getUnqual(ArrayType::get(i8, 0)));
+    GenericTypeSingleton = PointerType::getUnqual(
+      StructType::get(getGlobalContext(), tys));
+  }
+  return GenericTypeSingleton;
 }
 
 }};

@@ -674,6 +674,22 @@ Value *Call::Codegen() {
   fn->getGenerics(oldGenericBindings);
   fn->setGenerics(genericBindings);
 
+  if (dynamic_cast<Extern*>(fn)) {
+    // All specialized generics and type parameters must be passed to
+    // extern'ed functions in generic LLVM types, e.g. an Array[Int32]
+    // is usually { i32, [0xi32]* }*, but must be cast to { i32, [0xi8]* }*.
+    // TODO: A generic <A> specialized as [Int64] is passed as i8*, not i64.
+    vector<SType*> argtys = fn->getFunctionSType()->getArgs();
+    for (unsigned i=0, e=argVals.size(); i != e; ++i) {
+      if (dynamic_cast<SString*>(argtys[i])) {
+        // Do nothing.
+      } else if (dynamic_cast<SArray*>(argtys[i])) {
+        argVals[i] =
+          Builder.CreateBitCast(argVals[i], SArray::GenericType());
+      } // else if SGenericType...
+    }
+  }
+
   Value *val = Builder.CreateCall(
     fn->getFunction(), argVals.begin(), argVals.end(), "calltmp");
 
