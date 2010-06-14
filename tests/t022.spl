@@ -1,0 +1,10 @@
+def apply<A>(x: A, f: A -> A): A =
+  f(x)
+
+def addone(x: Int32): Int32 = {
+  x + 1
+}
+
+io main(): Int32 = {
+  apply(5, addone)
+}
