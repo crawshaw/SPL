@@ -380,6 +380,7 @@ namespace SPL {
       virtual void Bind(map<string, Expr*> &);
       virtual void TypeInfer(TypeInferer &);
       virtual void FindCalls(vector<pair<Func*,vector<SType*> > > &);
+      virtual Value *Gen();
       virtual Value *Codegen();
       virtual set<string> *FindFreeVars(set<string> *b);
       virtual Expr* LambdaLift(vector<Func*> &newFuncsnewFuncsnewFuncs);
@@ -395,8 +396,6 @@ namespace SPL {
       bool isGeneric();
       void setGenerics(const vector<SType*> &tys);
       void clearGenerics();
-      void MatchGenerics(const vector<SType*> &callTypes,
-          vector<SType*> &genericBindings);
     };
 
     class Extern: public Func {
@@ -409,7 +408,7 @@ namespace SPL {
           Func(name, args, retSType, generics) {}
 
       virtual Function *getFunction();
-      virtual Value *Codegen() { return getFunction(); }
+      virtual Value *Gen() { return getFunction(); }
     };
 
     class Closure: public Expr {
@@ -479,8 +478,8 @@ namespace SPL {
         Name(name), Params(params) {}
       const string &getName() { return Name; }
       const vector<TypePlaceholder*> getParams() { return Params; }
-      SType *Resolve(map<string,SType*> &);
-      SGenericType *ResolveAsGeneric(map<string,SType*> &);
+      virtual SType *Resolve(map<string,SType*> &);
+      virtual SGenericType *ResolveAsGeneric(map<string,SType*> &);
     };
 
     class SType {
@@ -608,6 +607,7 @@ namespace SPL {
       vector<SType*> Args;
       SType* Ret;
     public:
+      SFunctionType(): SType("Function"), Ret(NULL) {}
       SFunctionType(string &name, vector<SType*> &args, SType* ret)
         : SType(name), Args(args), Ret(ret) {}
       vector<SType*> &getArgs() { return Args; }
@@ -615,6 +615,9 @@ namespace SPL {
       llvm::FunctionType const *getFunctionType();
       virtual Type const *getType();
       virtual void dump();
+      virtual SType* ParamRebind(vector<SType*> &);
+      void MatchGenerics(const vector<SType*> &callTypes,
+          vector<SType*> &genericBindings);
     };
 
     class SPtr : public SType {

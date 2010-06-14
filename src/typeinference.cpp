@@ -90,11 +90,14 @@ void While::TypeInfer(TypeInferer &inferer) {
   inferer.ty(this, new SVoid());
 }
 void Call::TypeInfer(TypeInferer &inferer) {
-  Func *fn;
+  SFunctionType *funTy;
   if (Closure *cl = dynamic_cast<Closure*>(Callee)) {
-    fn = cl->getFunc();
+    funTy = cl->getFunc()->getFunctionSType();
   } else if (Func *fun = dynamic_cast<Func*>(Callee)) {
-    fn = fun;
+    funTy = fun->getFunctionSType();
+  } else if (SFunctionType *ty =
+      dynamic_cast<SFunctionType*>(Callee->getSType())){
+    funTy = ty;
   } else {
     std::cerr << "Call to " << CalleeName << " is not function nor closure."
       << std::endl;
@@ -104,7 +107,6 @@ void Call::TypeInfer(TypeInferer &inferer) {
   for (unsigned i=0, e=Args.size(); i != e; ++i)
     Args[i]->TypeInfer(inferer);
 
-  SFunctionType *funTy = fn->getFunctionSType();
   SType *retTy = funTy->getReturnType();
   if (SGenericType *ret = dynamic_cast<SGenericType*>(retTy)) {
     // Match the return type to one of the input types to the generic.

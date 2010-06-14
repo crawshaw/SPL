@@ -121,7 +121,48 @@ SType* SArray::ParamRebind(vector<SType*> &prms) {
   return sty;
 }
 
-Type const *SFunctionType::getType() { return getFunctionType(); }
+Type const *SFunctionType::getType() {
+  return PointerType::getUnqual(getFunctionType());
+}
+FunctionType const *SFunctionType::getFunctionType() {
+  vector<const Type*> ArgTypes;
+  for (vector<SType*>::const_iterator i=Args.begin(); i!=Args.end(); i++) {
+    ArgTypes.push_back((*i)->getType());
+    (*i)->getType()->dump();
+  }
+  return FunctionType::get(Ret->getType(), ArgTypes, false);
+}
+SType* SFunctionType::ParamRebind(vector<SType*> &prms) {
+  assert(prms.size() >= 2);
+  vector<SType*> args(prms.begin(), prms.end() - 1);
+  SType* ret = prms[prms.size() - 1];
+  string name("Function");
+  SFunctionType *sty = new SFunctionType(name, args, ret);
+  vector<string> x1;
+  sty->Bind(x1, NamedTypes);
+  return sty;
+}
+void SFunctionType::MatchGenerics(
+    const vector<SType*> &callTypes,
+    vector<SType*> &genericBindings) {
+  assert(callTypes.size() == Args.size());
+  assert(genericBindings.size() == 0);
+  map<SGenericType*, SType*> matchedGenerics;
+  for (unsigned i=0, e=Args.size(); i != e; ++i) {
+    if (SGenericType* gen = dynamic_cast<SGenericType*>(Args[i])) {
+      matchedGenerics[gen] = callTypes[i];
+      genericBindings.push_back(callTypes[i]);
+    }
+  }
+
+  // As we are generating type signatures for specialization, all
+  // boxed structures are equivalent to us, so we replace them with null.
+  for (unsigned i=0, e=genericBindings.size(); i != e; ++i)
+    if (SStructType *sty = dynamic_cast<SStructType*>(genericBindings[i]))
+      if (!sty->isUnboxed())
+        genericBindings[i] = NULL;
+}
+
 Type const *SPtr::getType() { return PointerType::getUnqual(Ref->getType()); }
 Type const *SBool::getType() { return Type::getInt1Ty(getGlobalContext()); }
 Type const *SGenericType::getType() {
@@ -148,6 +189,7 @@ SGenericType *TypePlaceholder::ResolveAsGeneric(map<string,SType*> &NamedTypes) 
   return new SGenericType(Name, resolvedParams);
 }
 
+
 /////////////////////////////////////////////////////////////////////
 
 
@@ -168,6 +210,7 @@ const map<string,SType*> &SType::Builtins() {
     BuiltinsMap["Int64"] = new Int64();
     BuiltinsMap["String"] = new SString();
     BuiltinsMap["Array"] = new SArray(NULL);
+    BuiltinsMap["Function"] = new SFunctionType();
   }
   return BuiltinsMap;
 }

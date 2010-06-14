@@ -172,6 +172,12 @@ typeSet   : { $$ = new vector<AST::TypePlaceholder*>(); }
           | '[' types ']' { $$ = $2; }
 
 type : TIDENT '[' types ']' { $$ = new AST::TypePlaceholder(*$1, *$3); }
+     | type '-' '>' type {
+        vector<AST::TypePlaceholder*> pms;
+        pms.push_back($1);
+        pms.push_back($4);
+        $$ = new AST::TypePlaceholder("Function", pms);
+     }
      | TIDENT { $$ = new AST::TypePlaceholder(*$1); }
 
 types : { $$ = new vector<AST::TypePlaceholder*>(); }
