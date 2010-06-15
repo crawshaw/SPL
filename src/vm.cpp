@@ -80,5 +80,6 @@ int main(int argc, char** argv) {
   }
   void *fptr = engine->getPointerToFunction(f);
   int32_t (*fp)() = (int32_t (*)())(intptr_t)fptr;
-  std::cout << "Result: " << fp() << std::endl;
+  int32_t res = fp();
+  std::cout << "Result: " << res << std::endl;
 }
