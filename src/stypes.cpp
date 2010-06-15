@@ -126,10 +126,8 @@ Type const *SFunctionType::getType() {
 }
 FunctionType const *SFunctionType::getFunctionType() {
   vector<const Type*> ArgTypes;
-  for (vector<SType*>::const_iterator i=Args.begin(); i!=Args.end(); i++) {
+  for (vector<SType*>::const_iterator i=Args.begin(); i!=Args.end(); i++)
     ArgTypes.push_back((*i)->getType());
-    (*i)->getType()->dump();
-  }
   return FunctionType::get(Ret->getType(), ArgTypes, false);
 }
 SType* SFunctionType::ParamRebind(vector<SType*> &prms) {

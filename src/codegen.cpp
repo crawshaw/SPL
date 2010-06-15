@@ -674,47 +674,23 @@ Value *Call::Codegen() {
     fn->getGenerics(oldGenericBindings);
     fn->setGenerics(genericBindings);
 
-    if (dynamic_cast<Extern*>(fn)) {
-      // All specialized generics and type parameters must be passed to
-      // extern'ed functions in generic LLVM types, e.g. an Array[Int32]
-      // is usually { i32, [0xi32]* }*, but must be cast to { i32, [0xi8]* }*.
-      // TODO: A generic <A> specialized as [Int64] is passed as i8*, not i64.
-      vector<SType*> argtys = fn->getFunctionSType()->getArgs();
-      for (unsigned i=0, e=argVals.size(); i != e; ++i) {
-        if (dynamic_cast<SString*>(argtys[i])) {
-          // Do nothing.
-        } else if (dynamic_cast<SArray*>(argtys[i])) {
-          argVals[i] =
-            Builder.CreateBitCast(argVals[i], SArray::GenericType());
-        } // else if SGenericType...
-      }
+    vector<SType*> tys = fn->getFunctionSType()->getArgs();
+    for (unsigned i=0, e=argVals.size(); i != e; ++i) {
+      argVals[i] = Builder.CreateBitCast(argVals[i], tys[i]->getType());
     }
 
-    val = Builder.CreateCall(
-      fn->getFunction(), argVals.begin(), argVals.end(), "calltmp");
+    Value *fnPtr = fn->getFunction();
+    val = Builder.CreateCall(fnPtr, argVals.begin(), argVals.end(), "calltmp");
+    val = Builder.CreateBitCast(val, getSType()->getType());
 
     fn->setGenerics(oldGenericBindings);
 
   } else {
-    // TODO: support function pointers.
-    /*
-    std::cerr << "Call to " << CalleeName << " is not function nor closure."
-      << std::endl;
-    exit(1);
-    */
-    std::cout << "tag 1\n";
     Value *CalleeVal = Callee->Codegen();
-    std::cout << "tag 2: CalleeVal type:\n";
-    CalleeVal->getType()->dump();
-    std::cout << "tag 2a: arg types:\n";
-    for (unsigned i=0, e=argVals.size(); i != e; ++i)
-      argVals[i]->getType()->dump();
-    std::cout << "tag 2b\n";
     Value *fnPtr = Builder.CreateLoad(CalleeVal);
 
     val = Builder.CreateCall(fnPtr,
       argVals.begin(), argVals.end(), "callptr");
-    std::cout << "tag 3\n";
   }
 
   return val;
@@ -788,9 +764,6 @@ void Func::getGenerics(vector<SType*> &gens) {
 }
 bool Func::isGeneric() { return Generics.size() > 0; }
 void Func::setGenerics(const vector<SType*> &tys) {
-  std::cout << "Name: " << GetName() << "\n";
-  std::cout << "tys.size: " << tys.size() << " GenericPlaceholders.size: "
-    << GenericPlaceholders.size() << std::endl;
   if (tys.size() == 0) {
     clearGenerics();
   } else {
@@ -817,12 +790,10 @@ Value *Func::Codegen() {
 Value *Func::Gen() {
   DEBUG(dbgs() << "Func::Gen: " << Name << "\n");
   Function *function = getFunction();
-  std::cout << "tag x1\n";
 
   // Create a new basic block to start insertion into.
   BasicBlock *BB = BasicBlock::Create(getGlobalContext(), "entry", function);
   Builder.SetInsertPoint(BB);
-  std::cout << "tag x2\n";
 
   // Allocate registers for arguments, fill in the tree.
   Function::arg_iterator ai = function->arg_begin();
@@ -834,10 +805,8 @@ Value *Func::Gen() {
     Builder.CreateStore(ai, alloca);
     ArgRegs[idx]->setAlloca(alloca);
   }
-  std::cout << "tag x3\n";
 
   Value *ret = Body->Codegen();
-  std::cout << "tag x4\n";
 
   if (ret == NULL) {
     function->eraseFromParent();
@@ -849,6 +818,7 @@ Value *Func::Gen() {
   if (llvm::DebugFlag)
     function->dump();
   verifyFunction(*function);
+  DEBUG(dbgs() << "done gen: " << Name << "\n");
 
   return function;
 }
@@ -974,9 +944,6 @@ void File::compile() {
     for (it=calls.begin(); it != calls.end(); ++it) {
       if (!Util::allNull(it->second)) {
         Func *fn = it->first;
-        std::cout << "Got func " << fn->GetName() << " being called with:\n";
-        for (unsigned i=0, e=it->second.size(); i != e; ++i)
-          it->second[i]->dump();
         fn->setGenerics(it->second);
         fn->Gen();
         fn->clearGenerics();

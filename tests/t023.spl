@@ -1,0 +1,14 @@
+struct Point = { x: Int32, y: Int32 }
+
+def apply<A>(x: A, f: A -> A): A =
+  f(x)
+
+def structone(x: Point): Point = {
+  x.x = x.x + 1;
+  x
+}
+
+io main(): Int32 = {
+  val x = apply(Point(6,5), structone);
+  x.x
+}
